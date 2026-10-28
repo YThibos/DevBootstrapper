@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Runs the real glab authenticated as the GitLab account resolved for the current directory
+# (docs/identities.md). The host comes from GITLAB_HOST, else the origin remote, else the
+# context's first GitLab account. An explicit GITLAB_TOKEN is respected unless `gitid as` is in effect.
+set -uo pipefail
+
+# shellcheck source=lib/common.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../lib/common.sh"
+# shellcheck source=lib/identity.sh
+. "$DEV_HOME/lib/identity.sh"
+
+real=$(devboot_find_real glab) || { echo "glab is not installed (run devup)" >&2; exit 127; }
+
+if [ -z "${GITLAB_TOKEN:-}" ] || [ -n "${DEVBOOT_ACCOUNT:-}" ]; then
+  ctx=$(id_resolve_context "$PWD" 2>/dev/null || true)
+  host=${GITLAB_HOST:-}
+  host=${host#*://}
+  if [ -z "$host" ]; then
+    url=$(git remote get-url origin 2>/dev/null || true)
+    case $url in
+      *://*) url=${url#*://}; url=${url#*@}; host=${url%%/*} ;;
+      *@*:*) url=${url#*@}; host=${url%%:*} ;;
+    esac
+    if [ -n "$host" ] && [ "$(id_get "account.$(id_resolve_account "$ctx" "$host" 2>/dev/null).forge")" != gitlab ]; then
+      host=''
+    fi
+  fi
+  if [ -z "$host" ]; then
+    if [ -n "${DEVBOOT_ACCOUNT:-}" ] && [ "$(id_get "account.$DEVBOOT_ACCOUNT.forge")" = gitlab ]; then
+      host=$(id_get "account.$DEVBOOT_ACCOUNT.host")
+    else
+      while IFS= read -r a; do
+        if [ "$(id_get "account.$a.forge")" = gitlab ]; then host=$(id_get "account.$a.host"); break; fi
+      done < <(id_context_accounts "$ctx")
+    fi
+  fi
+  if [ -n "$host" ] && acc=$(id_resolve_account "$ctx" "$host" 2>/dev/null) && token=$(id_account_token "$acc"); then
+    export GITLAB_HOST=$host GITLAB_TOKEN=$token
+  fi
+fi
+exec "$real" "$@"

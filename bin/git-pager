@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# git pager: delta when installed, less otherwise. "--color-only" is the interactive diff filter mode.
+if command -v delta >/dev/null 2>&1; then
+  exec delta "$@"
+fi
+if [ "${1:-}" = --color-only ]; then
+  exec cat
+fi
+exec less -R

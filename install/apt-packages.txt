@@ -1,0 +1,15 @@
+# Base packages from apt (docs/tools.md). Everything with a prebuilt mise binary comes from mise.
+# One package per line; "[wsl]" marks packages installed only inside WSL.
+build-essential
+ca-certificates
+curl
+wget
+git
+zip
+unzip
+gnupg
+bash-completion
+less
+file
+openssh-client
+wslu [wsl]

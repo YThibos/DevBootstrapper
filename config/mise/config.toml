@@ -1,0 +1,39 @@
+# DevBootstrapper tool manifest: the shared list of tools and their version lines.
+# Linked into mise's global config as a conf.d fragment; machine-local overrides written by
+# use-version live in .local/mise/config.toml and take precedence (docs/tools.md).
+# For a list, the first entry is the default on PATH and every entry is installed.
+# Keep one tool per line: use-version reads this file line by line.
+
+[tools]
+java = ["temurin-25", "temurin-21", "temurin-17", "temurin-11", "temurin-8"]
+maven = ["3.10", "4"]
+mvnd = "latest"
+gradle = "latest"
+node = "lts"
+"npm:@angular/cli" = "latest"
+python = "latest"
+uv = "latest"
+claude = "latest"
+github-cli = "latest"
+glab = "latest"
+jq = "latest"
+yq = "latest"
+ripgrep = "latest"
+fd = "latest"
+fzf = "latest"
+bat = "latest"
+eza = "latest"
+zoxide = "latest"
+delta = "latest"
+lazygit = "latest"
+lazydocker = "latest"
+starship = "latest"
+xh = "latest"
+glow = "latest"
+shellcheck = "latest"
+shfmt = "latest"
+tmux = "latest"
+
+[settings]
+# Use prebuilt Python builds, never compile from source.
+python.compile = false

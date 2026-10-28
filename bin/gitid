@@ -1,0 +1,429 @@
+#!/usr/bin/env bash
+# gitid - manage git identities (contexts) and forge accounts. See docs/identities.md.
+#: gitid | show the context, commit identity and accounts that apply here
+#: gitid list | table of every account and context (also: dev ids)
+#: gitid add-account [name] | add a forge account (GitHub, GitLab, other), HTTPS token or SSH key
+#: gitid add-context [name] | add a context and its folder sources/<name>/
+#: gitid link <context> <account> | use an account in a context (one account per host)
+#: gitid unlink <context> <account> | stop using an account in a context
+#: gitid default <context> | set this machine's default context (outside sources/)
+#: gitid use <context> / --clear | pin or unpin the current repository to a context
+#: gitid as <account> -- <command> | run one command as an account
+#: gitid doctor | check tokens, keys and generated git config
+set -euo pipefail
+
+# shellcheck source=lib/common.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
+# shellcheck source=lib/identity.sh
+. "$DEV_HOME/lib/identity.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: gitid [command]
+
+  (none)                      Show what applies in the current directory.
+  list                        Table of every account and context.
+  add-account [name] [opts]   Add a forge account.
+      --forge github|gitlab|other  --host HOST  --user USER
+      --auth https|ssh  --token-var VAR  --ssh-key PATH
+  add-context [name] [opts]   Add a context (creates sources/<name>/).
+      --name "Full Name"  --email EMAIL  --signing-key PATH  --account NAME (repeatable)
+  link <context> <account>    Use an account in a context; replaces the context's account for that host.
+  unlink <context> <account>  Remove an account from a context.
+  remove-account <name>       Delete an account (and unlink it everywhere).
+  remove-context <name>       Delete a context (its folder is kept).
+  default <context>           Set this machine's default context.
+  use <context> | --clear     Pin the current repository to a context, or remove the pin.
+  as <account> -- <cmd...>    Run one command authenticated as an account.
+  setup                       Guided setup of the home and work contexts and accounts.
+  sync                        Regenerate the git config files from identities.gitconfig.
+  doctor                      Check tokens, keys and generated git config.
+  prompt                      Print the resolved context (used by the shell prompt).
+EOF
+}
+
+require_name() {
+  id_valid_name "$1" || die "invalid name '$1': use lowercase letters, digits and dashes"
+}
+
+# Reads an option value or prompts for it when interactive.
+need() {
+  local var=$1 question=$2 def=${3:-}
+  if [ -z "${!var:-}" ]; then
+    is_tty || die "missing value for: $question"
+    ask "$var" "$question" "$def"
+  fi
+  [ -n "${!var:-}" ] || die "a value is required for: $question"
+}
+
+secrets_has_key() {
+  [ -f "$DEV_HOME/.secrets" ] && grep -q "^$1=" "$DEV_HOME/.secrets"
+}
+
+ensure_secret_placeholder() {
+  local key=$1 acc=$2
+  secrets_has_key "$key" && return 0
+  touch "$DEV_HOME/.secrets"
+  chmod 600 "$DEV_HOME/.secrets"
+  printf '\n# Token for git account "%s" (added by gitid)\n%s=\n' "$acc" "$key" >>"$DEV_HOME/.secrets"
+  info "added an empty $key to .secrets - fill it in (run: secrets)"
+}
+
+cmd_add_account() {
+  local name='' forge='' host='' user='' auth='' tokenvar='' sshkey=''
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --forge) forge=$2; shift 2 ;;
+      --host) host=$2; shift 2 ;;
+      --user) user=$2; shift 2 ;;
+      --auth) auth=$2; shift 2 ;;
+      --token-var) tokenvar=$2; shift 2 ;;
+      --ssh-key) sshkey=$2; shift 2 ;;
+      -*) die "unknown option $1" ;;
+      *) name=$1; shift ;;
+    esac
+  done
+  need name "Account name (e.g. github-personal)"
+  require_name "$name"
+  id_account_exists "$name" && die "account '$name' already exists"
+  need forge "Forge (github, gitlab, other)" github
+  case $forge in github | gitlab | other) ;; *) die "forge must be github, gitlab or other" ;; esac
+  local defhost=''
+  [ "$forge" = github ] && defhost=github.com
+  [ "$forge" = gitlab ] && defhost=gitlab.com
+  need host "Host" "$defhost"
+  need user "Username on $host"
+  need auth "Authentication (https or ssh)" https
+  case $auth in https | ssh) ;; *) die "auth must be https or ssh" ;; esac
+  if [ -z "$tokenvar" ]; then
+    tokenvar="$(printf '%s' "$name" | tr 'a-z-' 'A-Z_')_TOKEN"
+  fi
+  [[ $tokenvar =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "invalid token variable name '$tokenvar'"
+  if [ "$auth" = ssh ]; then
+    # Stored with a literal "~/" so the identities file survives a different Linux user name.
+    # shellcheck disable=SC2088
+    [ -n "$sshkey" ] || sshkey="~/.ssh/id_ed25519_$name"
+    local keypath
+    keypath=$(id_expand_path "$sshkey")
+    if [ ! -f "$keypath" ] && is_tty && confirm "No key at $keypath. Generate one now?" y; then
+      mkdir -p "$(dirname "$keypath")" && chmod 700 "$(dirname "$keypath")"
+      ssh-keygen -t ed25519 -C "$user@$host ($name)" -f "$keypath"
+    fi
+  fi
+  id_set "account.$name.forge" "$forge"
+  id_set "account.$name.host" "$host"
+  id_set "account.$name.user" "$user"
+  id_set "account.$name.auth" "$auth"
+  id_set "account.$name.tokenVar" "$tokenvar"
+  [ "$auth" = ssh ] && id_set "account.$name.sshKey" "$sshkey"
+  ensure_secret_placeholder "$tokenvar" "$name"
+  if [ "$auth" = ssh ] && [ -f "$(id_expand_path "$sshkey").pub" ]; then
+    info "public key to register on $host:"
+    cat "$(id_expand_path "$sshkey").pub"
+  fi
+  ok "account $name added ($forge, $host, $auth)"
+}
+
+cmd_link() {
+  local ctx=${1:-} acc=${2:-} host other
+  if [ -z "$ctx" ] || [ -z "$acc" ]; then die "usage: gitid link <context> <account>"; fi
+  id_context_exists "$ctx" || die "unknown context '$ctx'"
+  id_account_exists "$acc" || die "unknown account '$acc'"
+  host=$(id_get "account.$acc.host")
+  if other=$(id_context_account_for_host "$ctx" "$host"); then
+    [ "$other" = "$acc" ] && { ok "$ctx already uses $acc for $host"; return 0; }
+    git config -f "$ID_FILE" --unset "context.$ctx.account" "^$other\$"
+    info "$ctx: replaced $other with $acc for $host"
+  fi
+  git config -f "$ID_FILE" --add "context.$ctx.account" "$acc"
+  ok "$ctx uses $acc for $host"
+}
+
+cmd_unlink() {
+  local ctx=${1:-} acc=${2:-}
+  if [ -z "$ctx" ] || [ -z "$acc" ]; then die "usage: gitid unlink <context> <account>"; fi
+  git config -f "$ID_FILE" --unset "context.$ctx.account" "^$acc\$" 2>/dev/null ||
+    die "$ctx does not use $acc"
+  ok "$ctx no longer uses $acc"
+}
+
+cmd_add_context() {
+  local name='' fullname='' email='' signkey='' accounts=() make_default=0
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --name) fullname=$2; shift 2 ;;
+      --email) email=$2; shift 2 ;;
+      --signing-key) signkey=$2; shift 2 ;;
+      --account) accounts+=("$2"); shift 2 ;;
+      --default) make_default=1; shift ;;
+      -*) die "unknown option $1" ;;
+      *) name=$1; shift ;;
+    esac
+  done
+  need name "Context name (also the folder under sources/)"
+  require_name "$name"
+  id_context_exists "$name" && die "context '$name' already exists"
+  local defname
+  defname=$(git config --global --get user.name 2>/dev/null || true)
+  need fullname "Commit name for $name" "$defname"
+  need email "Commit email for $name"
+  id_set "context.$name.name" "$fullname"
+  id_set "context.$name.email" "$email"
+  [ -n "$signkey" ] && id_set "context.$name.signingKey" "$signkey"
+  mkdir -p "$ID_SOURCES/$name"
+  local acc
+  for acc in "${accounts[@]}"; do cmd_link "$name" "$acc"; done
+  [ "$make_default" -eq 1 ] && id_set defaults.context "$name"
+  ok "context $name added; projects in sources/$name/ use it"
+}
+
+cmd_remove_account() {
+  local acc=${1:-} ctx
+  id_account_exists "$acc" || die "unknown account '$acc'"
+  while IFS= read -r ctx; do
+    git config -f "$ID_FILE" --unset "context.$ctx.account" "^$acc\$" 2>/dev/null || true
+  done < <(id_contexts)
+  git config -f "$ID_FILE" --remove-section "account.$acc"
+  ok "account $acc removed (its token stays in .secrets)"
+}
+
+cmd_remove_context() {
+  local ctx=${1:-}
+  id_context_exists "$ctx" || die "unknown context '$ctx'"
+  git config -f "$ID_FILE" --remove-section "context.$ctx"
+  [ "$(id_default_context)" = "$ctx" ] && id_unset defaults.context
+  ok "context $ctx removed (sources/$ctx/ is kept)"
+}
+
+cmd_default() {
+  local ctx=${1:-}
+  id_context_exists "$ctx" || die "unknown context '$ctx'"
+  id_set defaults.context "$ctx"
+  ok "machine default context: $ctx"
+}
+
+cmd_use() {
+  local arg=${1:-} top
+  top=$(git rev-parse --show-toplevel 2>/dev/null) || die "not inside a git repository"
+  [ "$(_id_realpath "$top")" = "$DEV_HOME" ] && die "the dev home itself follows the machine default; use: gitid default <context>"
+  _clear_pin() {
+    git config --local --unset-all devboot.pinned 2>/dev/null || true
+    git config --local --unset-all include.path "$ID_CONTEXTS_DIR/" 2>/dev/null || true
+  }
+  if [ "$arg" = --clear ]; then
+    _clear_pin
+    ok "unpinned $top"
+    return 0
+  fi
+  id_context_exists "$arg" || die "unknown context '$arg'"
+  _clear_pin
+  git config --local devboot.pinned "$arg"
+  git config --local --add include.path "$ID_CONTEXTS_DIR/$arg.gitconfig"
+  ok "pinned $top to context $arg"
+}
+
+cmd_as() {
+  local acc=${1:-}
+  id_account_exists "$acc" || die "unknown account '$acc'"
+  shift
+  [ "${1:-}" = -- ] && shift
+  [ $# -gt 0 ] || die "usage: gitid as <account> -- <command...>"
+  DEVBOOT_ACCOUNT=$acc exec "$@"
+}
+
+_pad() { printf "%-${2}s" "$1"; }
+
+cmd_list() {
+  if [ ! -f "$ID_FILE" ] || [ -z "$(id_accounts)$(id_contexts)" ]; then
+    echo "No accounts or contexts yet. Start with: gitid setup"
+    return 0
+  fi
+  local acc ctx h tokenvar state w1=7 w3=4 w4=4 w5=4 hosts=()
+  while IFS= read -r acc; do
+    [ "${#acc}" -gt "$w1" ] && w1=${#acc}
+    h=$(id_get "account.$acc.host"); [ "${#h}" -gt "$w3" ] && w3=${#h}
+    h=$(id_get "account.$acc.user"); [ "${#h}" -gt "$w4" ] && w4=${#h}
+  done < <(id_accounts)
+  printf '%sAccounts%s\n' "$_c_bold" "$_c_off"
+  printf '  %s  %s  %s  %s  %s  %s\n' "$(_pad NAME "$w1")" "$(_pad FORGE 6)" "$(_pad HOST "$w3")" "$(_pad USER "$w4")" "$(_pad AUTH $w5)" "SECRET"
+  while IFS= read -r acc; do
+    [ -n "$acc" ] || continue
+    tokenvar=$(id_get "account.$acc.tokenVar")
+    if id_account_token "$acc" >/dev/null; then state="$tokenvar (set)"; else state="$tokenvar (empty)"; fi
+    if [ "$(id_get "account.$acc.auth")" = ssh ]; then
+      local key
+      key=$(id_expand_path "$(id_get "account.$acc.sshKey")")
+      [ -f "$key" ] && state="key ok, $state" || state="key missing, $state"
+    fi
+    printf '  %s  %s  %s  %s  %s  %s\n' "$(_pad "$acc" "$w1")" "$(_pad "$(id_get "account.$acc.forge")" 6)" \
+      "$(_pad "$(id_get "account.$acc.host")" "$w3")" "$(_pad "$(id_get "account.$acc.user")" "$w4")" \
+      "$(_pad "$(id_get "account.$acc.auth")" $w5)" "$state"
+  done < <(id_accounts)
+
+  while IFS= read -r h; do [ -n "$h" ] && hosts+=("$h"); done < <(
+    while IFS= read -r acc; do id_get "account.$acc.host"; done < <(id_accounts) | awk '!seen[$0]++'
+  )
+  local cw=11 ew=12 hw=()
+  while IFS= read -r ctx; do
+    [ "${#ctx}" -gt "$cw" ] && cw=${#ctx}
+    h=$(id_get "context.$ctx.email"); [ "${#h}" -gt "$ew" ] && ew=${#h}
+  done < <(id_contexts)
+  local i
+  for i in "${!hosts[@]}"; do
+    hw[i]=${#hosts[i]}
+    while IFS= read -r ctx; do
+      acc=$(id_context_account_for_host "$ctx" "${hosts[i]}" || echo -)
+      [ ${#acc} -gt "${hw[i]}" ] && hw[i]=${#acc}
+    done < <(id_contexts)
+  done
+  printf '\n%sContexts%s (folder sources/<context>/ decides; elsewhere the machine default)\n' "$_c_bold" "$_c_off"
+  local line
+  line="  $(_pad CONTEXT "$cw")  $(_pad 'COMMIT EMAIL' "$ew")"
+  for i in "${!hosts[@]}"; do line+="  $(_pad "${hosts[i]}" "${hw[i]}")"; done
+  printf '%s\n' "$line"
+  local def
+  def=$(id_default_context)
+  while IFS= read -r ctx; do
+    [ -n "$ctx" ] || continue
+    line="  $(_pad "$ctx" "$cw")  $(_pad "$(id_get "context.$ctx.email")" "$ew")"
+    for i in "${!hosts[@]}"; do
+      acc=$(id_context_account_for_host "$ctx" "${hosts[i]}" || echo -)
+      line+="  $(_pad "$acc" "${hw[i]}")"
+    done
+    printf '%s\n' "$line"
+  done < <(id_contexts)
+  printf '  %s  %s\n' "$(_pad '(elsewhere)' "$cw")" "-> ${def:-no default set} (machine default)"
+}
+
+remote_hosts() {
+  git remote -v 2>/dev/null | awk '{print $2}' | awk '!seen[$0]++' | while IFS= read -r url; do
+    case $url in
+      *://*) url=${url#*://}; url=${url#*@}; printf '%s %s\n' "${url%%/*}" https ;;
+      *@*:*) url=${url#*@}; printf '%s %s\n' "${url%%:*}" ssh ;;
+    esac
+  done
+}
+
+cmd_status() {
+  local r ctx src
+  if ! r=$(id_resolve_context_with_source "$PWD"); then
+    echo "No context applies here. Start with: gitid setup"
+    return 0
+  fi
+  ctx=${r%% *}
+  src=${r#* }
+  case $src in
+    folder) src="folder sources/$ctx/" ;;
+    pinned) src="pinned with gitid use" ;;
+    default) src="machine default" ;;
+    env) src="DEVBOOT_CONTEXT" ;;
+  esac
+  printf '%sContext%s   %s (%s)\n' "$_c_bold" "$_c_off" "$ctx" "$src"
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    printf '%sCommits%s   %s <%s>\n' "$_c_bold" "$_c_off" "$(git config user.name || echo '?')" "$(git config user.email || echo '?')"
+    local host proto acc
+    while read -r host proto; do
+      [ -n "$host" ] || continue
+      acc=$(id_resolve_account "$ctx" "$host" || echo "none (git will ask)")
+      printf '%sRemote%s    %s (%s) -> %s\n' "$_c_bold" "$_c_off" "$host" "$proto" "$acc"
+    done < <(remote_hosts)
+  else
+    printf '%sCommits%s   %s <%s>\n' "$_c_bold" "$_c_off" "$(id_get "context.$ctx.name")" "$(id_get "context.$ctx.email")"
+    local acc
+    while IFS= read -r acc; do
+      [ -n "$acc" ] && printf '%sAccount%s   %s -> %s\n' "$_c_bold" "$_c_off" "$(id_get "account.$acc.host")" "$acc"
+    done < <(id_context_accounts "$ctx")
+  fi
+}
+
+cmd_setup() {
+  is_tty || die "gitid setup is interactive"
+  heading "Git identities"
+  echo "A context is a folder under sources/ with its own commit identity and accounts."
+  echo "Your known setup: sources/home (personal GitHub), sources/work (work GitHub and work GitLab)."
+  local ctx
+  for ctx in home work; do
+    if id_context_exists "$ctx"; then
+      ok "context $ctx exists"
+    else
+      cmd_add_context "$ctx"
+    fi
+  done
+  while confirm "Add a forge account?" "$([ -z "$(id_accounts)" ] && echo y || echo n)"; do
+    local name=''
+    ask name "Account name (e.g. github-personal, github-work, gitlab-work)"
+    [ -n "$name" ] || continue
+    cmd_add_account "$name" || continue
+    local c=''
+    ask c "Use $name in which contexts (space separated)" "$([[ $name == *work* ]] && echo work || echo home)"
+    for ctx in $c; do cmd_link "$ctx" "$name" || true; done
+  done
+  local def="${DEV_PROFILE:-}"
+  if [ -z "$(id_default_context)" ]; then
+    ask def "Default context on this machine (outside sources/)" "${def:-home}"
+    cmd_default "$def"
+  fi
+  id_sync
+  echo
+  cmd_list
+}
+
+cmd_doctor() {
+  local problems=0 acc ctx key
+  id_sync
+  while IFS= read -r acc; do
+    [ -n "$acc" ] || continue
+    if [ "$(id_get "account.$acc.auth")" = ssh ]; then
+      key=$(id_expand_path "$(id_get "account.$acc.sshKey")")
+      [ -f "$key" ] || { warn "$acc: SSH key $key is missing"; problems=$((problems + 1)); }
+    fi
+    if ! id_account_token "$acc" >/dev/null; then
+      if [ "$(id_get "account.$acc.auth")" = https ]; then
+        warn "$acc: token $(id_get "account.$acc.tokenVar") is empty in .secrets"
+        problems=$((problems + 1))
+      else
+        info "$acc: no token (needed only for the $(id_get "account.$acc.forge") CLI)"
+      fi
+    fi
+  done < <(id_accounts)
+  while IFS= read -r ctx; do
+    [ -n "$ctx" ] || continue
+    local hosts
+    hosts=$(id_context_accounts "$ctx" | while IFS= read -r acc; do id_get "account.$acc.host"; done | sort | uniq -d)
+    [ -z "$hosts" ] || { warn "$ctx uses several accounts for: $hosts"; problems=$((problems + 1)); }
+    [ -d "$ID_SOURCES/$ctx" ] || mkdir -p "$ID_SOURCES/$ctx"
+  done < <(id_contexts)
+  [ -n "$(id_default_context)" ] || { warn "no machine default context (gitid default <context>)"; problems=$((problems + 1)); }
+  if [ "$(readlink "$HOME/.gitconfig" 2>/dev/null)" != "$DEV_HOME/config/git/gitconfig" ]; then
+    warn "$HOME/.gitconfig is not linked to the dev home (run devup)"
+    problems=$((problems + 1))
+  fi
+  [ "$problems" -eq 0 ] && ok "git identities look good"
+  return "$problems"
+}
+
+main() {
+  local cmd=${1:-status}
+  [ $# -gt 0 ] && shift
+  case $cmd in
+    status) cmd_status ;;
+    list | ls) cmd_list ;;
+    add-account) cmd_add_account "$@"; id_sync ;;
+    add-context) cmd_add_context "$@"; id_sync ;;
+    link) cmd_link "$@"; id_sync ;;
+    unlink) cmd_unlink "$@"; id_sync ;;
+    remove-account) cmd_remove_account "$@"; id_sync ;;
+    remove-context) cmd_remove_context "$@"; id_sync ;;
+    default) cmd_default "$@"; id_sync ;;
+    use) cmd_use "$@" ;;
+    as) cmd_as "$@" ;;
+    setup) cmd_setup ;;
+    sync) id_sync ;;
+    doctor) cmd_doctor ;;
+    prompt) id_resolve_context "$PWD" 2>/dev/null || true ;;
+    -h | --help | help) usage ;;
+    *) err "unknown command: $cmd"; usage >&2; exit 2 ;;
+  esac
+}
+
+main "$@"

@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# use-version - switch this machine's default version of a tool (docs/tools.md).
+#: use-version [tool] [version] | show or switch a tool's default version on this machine
+#: mvnuse [version] | show or switch the default Maven (e.g. mvnuse 4, mvnuse 3.10)
+#: jdkuse [version] | show or switch the default JDK (e.g. jdkuse 21)
+#
+# The shared manifest (config/mise/config.toml) lists the installed version lines; its first
+# entry is the shared default. This command writes a machine-local override to
+# .local/mise/config.toml, which mise loads with higher precedence, so the tracked manifest
+# and other machines never change. A project's own .mise.toml or .java-version still wins.
+set -euo pipefail
+
+# shellcheck source=lib/common.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
+
+MANIFEST="$DEV_HOME/config/mise/config.toml"
+LOCAL="$DEV_HOME/.local/mise/config.toml"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  use-version                     List the tools with several versions and their defaults.
+  use-version <tool>              List a tool's versions and mark the default.
+  use-version <tool> <version>    Make <version> this machine's default.
+  use-version <tool> --reset      Go back to the shared default.
+Shortcuts: mvnuse = use-version maven, jdkuse = use-version java.
+USAGE
+}
+
+# Prints a tool's entries from a config file, one per line, in order.
+entries() {
+  local file=$1 tool=$2
+  [ -f "$file" ] || return 0
+  awk -v t="$tool" '
+    /^\[/ { intools = ($0 == "[tools]"); next }
+    intools && $0 ~ "^" t "[[:space:]]*=" {
+      sub(/^[^=]*=[[:space:]]*/, "")
+      gsub(/[][" ]/, "")
+      n = split($0, parts, ",")
+      for (i = 1; i <= n; i++) if (parts[i] != "") print parts[i]
+      exit
+    }
+  ' "$file"
+}
+
+short() { printf '%s\n' "${1#*-}"; }
+
+multi_tools() {
+  awk '/^\[/ { intools = ($0 == "[tools]"); next } intools && /^[A-Za-z0-9_-]+ = \[/ { print $1 }' "$MANIFEST"
+}
+
+current_default() {
+  local tool=$1 d
+  d=$(entries "$LOCAL" "$tool" | head -1)
+  [ -n "$d" ] || d=$(entries "$MANIFEST" "$tool" | head -1)
+  printf '%s\n' "$d"
+}
+
+list_tool() {
+  local tool=$1 def e mark local_def
+  def=$(current_default "$tool")
+  local_def=$(entries "$LOCAL" "$tool" | head -1)
+  [ -n "$(entries "$MANIFEST" "$tool")$local_def" ] || die "'$tool' is not in the tool manifest"
+  {
+    entries "$MANIFEST" "$tool"
+    entries "$LOCAL" "$tool"
+  } | awk '!seen[$0]++' | while IFS= read -r e; do
+    mark='  '
+    [ "$e" = "$def" ] && mark='* '
+    printf '%s%s\n' "$mark" "$e"
+  done
+  if [ -n "$local_def" ]; then
+    echo "(* = default on this machine; shared default: $(entries "$MANIFEST" "$tool" | head -1))"
+  else
+    echo "(* = default, shared by every machine)"
+  fi
+}
+
+list_all() {
+  local tool
+  printf '%-10s %-14s %s\n' TOOL DEFAULT VERSIONS
+  while IFS= read -r tool; do
+    printf '%-10s %-14s %s\n' "$tool" "$(current_default "$tool")" "$(entries "$MANIFEST" "$tool" | paste -sd ' ' -)"
+  done < <(multi_tools)
+}
+
+write_local() {
+  local tool=$1 line=$2 tmp
+  mkdir -p "$(dirname "$LOCAL")"
+  if [ ! -f "$LOCAL" ]; then
+    printf '%s\n%s\n' '# Machine-local tool defaults, written by use-version (docs/tools.md). Not shared.' '[tools]' >"$LOCAL"
+  fi
+  tmp=$(mktemp)
+  awk -v t="$tool" -v line="$line" '
+    /^\[/ { if (intools && !done && line != "") { print line; done = 1 } intools = ($0 == "[tools]"); print; next }
+    intools && $0 ~ "^" t "[[:space:]]*=" { if (line != "" && !done) { print line; done = 1 } next }
+    { print }
+    END { if (intools && !done && line != "") print line }
+  ' "$LOCAL" >"$tmp"
+  cat "$tmp" >"$LOCAL"
+  rm -f "$tmp"
+}
+
+set_version() {
+  local tool=$1 want=$2 chosen='' e prefix='' shared=() line
+  mapfile -t shared < <(entries "$MANIFEST" "$tool")
+  [ ${#shared[@]} -gt 0 ] || die "'$tool' is not in the tool manifest"
+  for e in "${shared[@]}"; do
+    if [ "$e" = "$want" ] || [ "$(short "$e")" = "$want" ]; then
+      chosen=$e
+      break
+    fi
+  done
+  if [ -z "$chosen" ]; then
+    case ${shared[0]} in *-*) prefix=${shared[0]%%-*}- ;; esac
+    case $want in *-*) chosen=$want ;; *) chosen=$prefix$want ;; esac
+    warn "$chosen is not in the shared manifest; installing it on this machine only"
+  fi
+  line="$tool = [\"$chosen\""
+  for e in "${shared[@]}"; do
+    [ "$e" = "$chosen" ] || line+=", \"$e\""
+  done
+  line+="]"
+  write_local "$tool" "$line"
+  if have mise; then
+    mise install --quiet "$tool@$chosen" >/dev/null 2>&1 || warn "mise could not install $tool@$chosen yet; run devup"
+  fi
+  ok "$tool default on this machine: $chosen (new shells, programs and this shell's next prompt)"
+}
+
+reset_version() {
+  write_local "$1" ''
+  ok "$1 follows the shared default again: $(current_default "$1")"
+}
+
+main() {
+  case ${1:-} in
+    '') list_all ;;
+    -h | --help) usage ;;
+    --list-values)
+      entries "$MANIFEST" "${2:-}" | while IFS= read -r e; do short "$e"; done
+      ;;
+    *)
+      local tool=$1
+      case ${2:-} in
+        '') list_tool "$tool" ;;
+        --reset) reset_version "$tool" ;;
+        *) set_version "$tool" "$2" ;;
+      esac
+      ;;
+  esac
+}
+
+main "$@"

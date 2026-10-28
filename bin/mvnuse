@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# mvnuse [version|--reset] - switch this machine's default Maven (see use-version).
+exec "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/use-version" maven "$@"

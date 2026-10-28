@@ -1,0 +1,7 @@
+# Global git ignore (core.excludesFile): editor and OS clutter only.
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+*.swp
+*.swo

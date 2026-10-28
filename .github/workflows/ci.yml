@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Shell, Lua and tests (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck and Lua
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck lua5.4
+      - name: Lua syntax
+        run: luac5.4 -p config/wezterm/wezterm.lua windows/wezterm-stub.lua
+      - name: PowerShell syntax
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($file in Get-ChildItem windows -Filter *.ps1) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $errors | ForEach-Object { Write-Error "$($file.Name): $_" }; $failed = $true }
+          }
+          if ($failed) { exit 1 }
+      - name: Tests (includes shellcheck)
+        run: tests/run.sh
+
+  windows:
+    name: WezTerm launcher (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Script analysis
+        shell: powershell
+        run: |
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) { Install-Module PSScriptAnalyzer -Scope CurrentUser -Force }
+          $findings = Invoke-ScriptAnalyzer -Path windows -Severity Error
+          $findings | Format-Table -AutoSize
+          if ($findings) { exit 1 }
+      - name: Install WezTerm nightly through the launcher
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'tools'
+          New-Item -ItemType Directory -Force (Join-Path $tools 'launcher') | Out-Null
+          Copy-Item windows\launcher.ps1, windows\wezterm-stub.lua (Join-Path $tools 'launcher')
+          powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $tools 'launcher\launcher.ps1') -UpdateOnly -ToolsDir $tools
+          if ($LASTEXITCODE -ne 0) { Get-Content (Join-Path $tools 'launcher\launcher.log'); exit 1 }
+          Get-Content (Join-Path $tools 'launcher\launcher.log')
+          foreach ($f in 'wezterm\wezterm-gui.exe', 'wezterm\wezterm.lua') {
+            if (-not (Test-Path (Join-Path $tools $f))) { Write-Error "missing $f"; exit 1 }
+          }
+          & (Join-Path $tools 'wezterm\wezterm.exe') --version
+      - name: Second launch the same day does not download again
+        shell: powershell
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'tools'
+          $before = (Get-Item (Join-Path $tools 'wezterm\wezterm-gui.exe')).LastWriteTimeUtc
+          powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $tools 'launcher\launcher.ps1') -UpdateOnly -ToolsDir $tools
+          $after = (Get-Item (Join-Path $tools 'wezterm\wezterm-gui.exe')).LastWriteTimeUtc
+          if ($before -ne $after) { Write-Error 'the launcher replaced WezTerm twice in one day'; exit 1 }
+          if ((Select-String -Path (Join-Path $tools 'launcher\launcher.log') -Pattern 'downloading').Count -ne 1) { Write-Error 'expected exactly one download'; exit 1 }

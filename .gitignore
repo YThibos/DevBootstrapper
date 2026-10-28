@@ -1,0 +1,35 @@
+# Allow-list (docs/getting-started.md): ignore everything at the top level, then re-include
+# only the toolkit. Tools, caches, scratch files, projects, machine settings and secrets can
+# therefore never be committed by accident.
+/*
+!/.gitignore
+!/.gitattributes
+!/.github/
+!/.local.example/
+!/.secrets.example
+!/README.md
+!/SPEC.md
+!/bash/
+!/bin/
+!/config/
+!/docs/
+!/install/
+!/lib/
+!/tests/
+!/windows/
+!/sources/
+!/tmp/
+
+/bash/local.sh
+
+# sources/: only the two standard context folders exist in the repository, never their projects.
+/sources/*
+!/sources/home/
+!/sources/work/
+/sources/home/*
+/sources/work/*
+!/sources/home/.gitkeep
+!/sources/work/.gitkeep
+
+/tmp/*
+!/tmp/.gitkeep

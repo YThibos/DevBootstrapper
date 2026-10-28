@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# devup - install and update everything (docs/updates.md).
+#: devup | update everything: repo, apt, mise tools, links, health report
+#: devup --skip apt,mise | update, skipping some steps
+exec bash "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../install/devup.sh" "$@"

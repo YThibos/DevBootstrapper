@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# dev - DevBootstrapper's front door: help, cheat sheet, docs and status.
+#: dev | overview of the toolkit and its commands
+#: dev cheat [filter] | cheat sheet of commands, aliases, functions and keys
+#: dev docs [topic] | read the documentation (dev docs lists the topics)
+#: dev ids | table of git accounts and contexts (same as gitid list)
+#: dev doctor | health report of tools, identities and network
+#: dev startup-time | measure interactive shell startup
+set -euo pipefail
+
+# shellcheck source=lib/common.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
+
+DOCS="$DEV_HOME/docs"
+
+usage() {
+  cat <<EOF
+${_c_bold}DevBootstrapper${_c_off} - your portable development toolkit (dev home: $DEV_HOME)
+
+  dev cheat [filter]   Cheat sheet: commands, aliases, functions, WezTerm and tmux keys.
+  dev docs [topic]     Documentation. Topics: $(topics | paste -sd ' ' -)
+  dev ids              Git accounts and contexts (gitid list).
+  dev up               Update everything (devup).
+  dev doctor           Health report.
+  dev startup-time     Measure interactive shell startup.
+  dev version          Toolkit version.
+
+Start here: dev docs getting-started
+EOF
+}
+
+topics() {
+  find "$DOCS" -maxdepth 1 -name '*.md' -printf '%f\n' 2>/dev/null | sed 's/\.md$//' | sort
+  echo spec
+}
+
+# Cheat entries are "#: usage | description" (or "--: ..." in Lua) lines next to what they describe.
+cheat_section() {
+  local title=$1
+  shift
+  local out
+  out=$(grep -h -E '^[[:space:]]*(#|--): .+ \| ' "$@" 2>/dev/null |
+    sed -E 's/^[[:space:]]*(#|--): //' |
+    awk -F ' \\| ' '{ printf "  %-34s %s\n", $1, $2 }') || true
+  [ -n "$out" ] || return 0
+  if [ -n "$FILTER" ]; then
+    out=$(printf '%s\n' "$out" | grep -i -- "$FILTER" || true)
+    [ -n "$out" ] || return 0
+  fi
+  printf '%s%s%s\n%s\n\n' "$_c_bold" "$title" "$_c_off" "$out"
+}
+
+cmd_cheat() {
+  FILTER=${1:-}
+  local b="$DEV_HOME/bash"
+  cheat_section 'Commands' "$DEV_HOME/bin/dev" "$DEV_HOME/bin/devup" "$DEV_HOME/bin/gitid" "$DEV_HOME/bin/use-version"
+  cheat_section 'Navigation and files' "$b/aliases.sh" "$b/functions.sh" "$b/tools/zoxide.sh" "$b/tools/fzf.sh"
+  cheat_section 'Git' "$b/tools/git.sh"
+  cheat_section 'Java and Maven' "$b/tools/java.sh"
+  cheat_section 'Node and Angular' "$b/tools/node.sh"
+  cheat_section 'Docker' "$b/tools/docker.sh"
+  cheat_section 'Windows (WSL)' "$b/tools/wsl.sh"
+  cheat_section 'WezTerm keys' "$DEV_HOME/config/wezterm/wezterm.lua"
+  cheat_section 'tmux keys' "$DEV_HOME/config/tmux/tmux.conf"
+}
+
+render_markdown() {
+  local file=$1
+  if have glow; then
+    glow -p "$file"
+  elif have bat; then
+    bat --language markdown --style plain --paging auto "$file"
+  else
+    less -R "$file" 2>/dev/null || cat "$file"
+  fi
+}
+
+cmd_docs() {
+  local topic=${1:-}
+  if [ -z "$topic" ]; then
+    echo "Documentation topics (dev docs <topic>):"
+    topics | sed 's/^/  /'
+    return 0
+  fi
+  if [ "$topic" = spec ]; then
+    render_markdown "$DEV_HOME/SPEC.md"
+    return 0
+  fi
+  local file="$DOCS/$topic.md"
+  if [ ! -f "$file" ]; then
+    file=$(find "$DOCS" -maxdepth 1 -name "*$topic*.md" | sort | head -1)
+  fi
+  if [ -z "$file" ] || [ ! -f "$file" ]; then
+    die "no documentation topic '$topic' (dev docs lists them)"
+  fi
+  render_markdown "$file"
+}
+
+cmd_startup_time() {
+  local start end total=0 runs=5
+  for _ in $(seq "$runs"); do
+    start=$(date +%s%N)
+    DEVBOOT_NO_REMINDER=1 bash -i -c exit </dev/null >/dev/null 2>&1
+    end=$(date +%s%N)
+    total=$((total + (end - start) / 1000000))
+  done
+  echo "interactive shell startup: $((total / runs)) ms (average of $runs, budget 200 ms)"
+}
+
+cmd_version() {
+  if git -C "$DEV_HOME" rev-parse --git-dir >/dev/null 2>&1; then
+    git -C "$DEV_HOME" log -1 --format='DevBootstrapper %h (%cd)' --date=short
+  else
+    echo 'DevBootstrapper (not a git checkout)'
+  fi
+}
+
+main() {
+  local cmd=${1:-help}
+  [ $# -gt 0 ] && shift
+  case $cmd in
+    help | -h | --help) usage ;;
+    cheat) cmd_cheat "$@" ;;
+    docs | doc) cmd_docs "$@" ;;
+    ids) exec "$DEV_HOME/bin/gitid" list ;;
+    up | update) exec "$DEV_HOME/bin/devup" "$@" ;;
+    doctor) exec bash "$DEV_HOME/install/doctor.sh" ;;
+    startup-time) cmd_startup_time ;;
+    version) cmd_version ;;
+    *) err "unknown command: $cmd"; usage >&2; exit 2 ;;
+  esac
+}
+
+main "$@"

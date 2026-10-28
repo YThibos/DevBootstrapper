@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Runs the real gh authenticated as the GitHub account resolved for the current directory
+# (docs/identities.md). An explicit GH_TOKEN is respected unless `gitid as` is in effect.
+set -uo pipefail
+
+# shellcheck source=lib/common.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../lib/common.sh"
+# shellcheck source=lib/identity.sh
+. "$DEV_HOME/lib/identity.sh"
+
+real=$(devboot_find_real gh) || { echo "gh is not installed (run devup)" >&2; exit 127; }
+
+if [ -z "${GH_TOKEN:-}" ] || [ -n "${DEVBOOT_ACCOUNT:-}" ]; then
+  host=${GH_HOST:-github.com}
+  ctx=$(id_resolve_context "$PWD" 2>/dev/null || true)
+  if acc=$(id_resolve_account "$ctx" "$host" 2>/dev/null) && token=$(id_account_token "$acc"); then
+    if [ "$host" = github.com ]; then
+      export GH_TOKEN=$token
+    else
+      export GH_HOST=$host GH_ENTERPRISE_TOKEN=$token
+    fi
+  fi
+fi
+exec "$real" "$@"

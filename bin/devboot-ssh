@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# SSH command for git (core.sshCommand): uses the key of the account resolved for the
+# current directory and host when that account authenticates with SSH, plain ssh otherwise.
+set -uo pipefail
+
+# shellcheck source=lib/common.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
+# shellcheck source=lib/identity.sh
+. "$DEV_HOME/lib/identity.sh"
+
+ssh_bin=${DEVBOOT_SSH_BIN:-ssh}
+
+# The destination is the first argument that is not an option or an option's value.
+host=''
+args=("$@")
+i=0
+while [ $i -lt ${#args[@]} ]; do
+  a=${args[i]}
+  case $a in
+    -[bcDEeFIiJLlmOopQRSWw]) i=$((i + 2)); continue ;;
+    -*) i=$((i + 1)); continue ;;
+    *) host=${a#*@}; break ;;
+  esac
+done
+
+if [ -n "$host" ]; then
+  ctx=$(id_resolve_context "$PWD" 2>/dev/null || true)
+  if acc=$(id_resolve_account "$ctx" "$host" 2>/dev/null) && [ "$(id_get "account.$acc.auth")" = ssh ]; then
+    key=$(id_expand_path "$(id_get "account.$acc.sshKey")")
+    if [ -f "$key" ]; then
+      exec "$ssh_bin" -i "$key" -o IdentitiesOnly=yes "$@"
+    fi
+  fi
+fi
+exec "$ssh_bin" "$@"
