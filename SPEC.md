@@ -478,7 +478,7 @@ The remaining unknowns are the work-laptop investigation items in section 18; an
 
 ## 21. Verification status
 
-Verified by the automated tests (`tests/run.sh`), run in a sandboxed home on Ubuntu 24.04:
+Verified by the automated tests (`tests/run.sh`), run in a sandboxed home on Ubuntu 24.04 and by CI on every push on the `ubuntu-latest` runner (Ubuntu 26):
 
 - Git contexts and accounts: commit identity per folder and by machine default, also from non-interactive shells; the credential helper per folder and host, including the clone case; the SSH key choice; the `gh` and `glab` wrappers; `gitid use`, `gitid as`, one account per host, a third context, listing and doctor.
 - Version switching: `mvnuse`, `jdkuse` and `use-version` write only the machine-local file and keep every version installed.
@@ -486,12 +486,11 @@ Verified by the automated tests (`tests/run.sh`), run in a sandboxed home on Ubu
 - The `devup` apt step ran for real against Ubuntu's package manager, including the fallback to Ubuntu's git when the git-core PPA is unreachable.
 - All shell scripts pass shellcheck, and the Lua files compile.
 
-CI (`.github/workflows/ci.yml`) is set up to repeat these tests on every push and, on a Windows runner, to install WezTerm nightly through the launcher, check that a second start the same day does not download again, and run PSScriptAnalyzer.
-Its first run did not start: GitHub assigned no runner to either job, which points at the account's Actions settings for private repositories rather than at the code.
+Verified by CI (`.github/workflows/ci.yml`) on a Windows runner: the launcher installs WezTerm nightly and places the stub, a second start the same day does not download again, and PSScriptAnalyzer reports no errors in `windows/`.
+CI got no runners while the repository was private; it runs since the repository is public.
 
 Not yet verified:
 
-- The Windows launcher and the PowerShell scripts on Windows, until CI runs (see above).
 - `install.ps1` end to end on a real Windows machine with WSL: WSL detection, `.wslconfig`, the first run inside WSL, the WSL restart and the shortcut.
 - The WezTerm configuration live: WSL domain, keys, the stub loading the repository config over `\\wsl.localhost`, and the daily update tab.
 - The `mise` step and the tools it installs, including Maven 3.10 resolving, and `certs-java`.
