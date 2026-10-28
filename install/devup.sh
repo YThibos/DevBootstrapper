@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Steps are called by name (step_<name>), which shellcheck cannot follow.
-# shellcheck disable=SC2317
+# SC2317 is the code in shellcheck up to 0.10, SC2329 from 0.11 on.
+# shellcheck disable=SC2317,SC2329
 # devup - install and update DevBootstrapper (docs/updates.md).
 # Idempotent: the first install and every daily update run the same steps, in this order:
 #   pull         fast-forward the dev home (skipped when it has local changes)
