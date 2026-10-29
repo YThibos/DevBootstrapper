@@ -29,6 +29,9 @@ new_sandbox() {
   DEV="$HOME/development"
   FAKEBIN="$SANDBOX/fakebin"
   mkdir -p "$DEV" "$FAKEBIN"
+  # Ubuntu's /etc/bash.bashrc prints a sudo hint in interactive shells of sudo-group users whose
+  # home lacks this marker, which would leak into the output of the interactive-shell tests.
+  touch "$HOME/.sudo_as_admin_successful"
   (cd "$REPO" && git ls-files -co --exclude-standard -z | xargs -0 cp --parents -t "$DEV/")
   TPATH="$DEV/bin/wrappers:$DEV/bin:$FAKEBIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   export SANDBOX HOME DEV FAKEBIN TPATH
