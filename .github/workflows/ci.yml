@@ -14,7 +14,7 @@ jobs:
       - name: Install shellcheck and Lua
         run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck lua5.4
       - name: Lua syntax
-        run: luac5.4 -p config/wezterm/wezterm.lua windows/wezterm-stub.lua
+        run: luac5.4 -p config/wezterm/wezterm.lua windows/wezterm-stub.lua .local.example/wezterm.lua
       - name: PowerShell syntax
         shell: pwsh
         run: |

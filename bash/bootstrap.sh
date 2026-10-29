@@ -36,6 +36,7 @@ for __devboot_f in \
   tools/fzf.sh \
   tools/zoxide.sh \
   tools/wsl.sh \
+  tools/wezterm.sh \
   aliases.sh \
   functions.sh \
   completions.sh \
