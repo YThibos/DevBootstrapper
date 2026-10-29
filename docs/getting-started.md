@@ -9,7 +9,7 @@
 
 ## 2. Install
 
-In a normal PowerShell window:
+In a normal PowerShell window (an elevated one while your WSL release refuses `wsl.exe` without administrator rights, as WSL 3.0.3 and 3.0.4 do):
 
 ```powershell
 irm https://raw.githubusercontent.com/YThibos/DevBootstrapper/main/windows/install.ps1 | iex
@@ -31,15 +31,19 @@ The installer:
 
 ## 3. First run
 
-`devup --first-run` asks a few questions once:
+`devup --first-run` walks through five numbered sections:
 
-- **Machine profile**: `home` on the desktop PC, `work` on the work laptop.
-  It decides the default git context outside `sources/` and whether proxy questions are asked.
-- **Proxy and corporate certificate** (work profile): see [network.md](network.md).
-- **Git contexts and accounts**: your commit names and emails for `home` and `work`, and your forge accounts. See [identities.md](identities.md).
+1. **Machine profile**: `home` on the desktop PC, `work` on the work laptop.
+   It decides the default git context outside `sources/` and whether proxy questions are asked.
+2. **Network**: proxy and corporate certificate (work profile), see [network.md](network.md).
+   Sections 1 and 2 end with a summary of your answers; answer `n` to go through them again.
+3. **Shell and WSL**: creates `.secrets`, sets `systemd=true` and `appendWindowsPath=false` in `/etc/wsl.conf` and adds two small blocks to `~/.bashrc`.
+4. **Git identities**: your commit names and emails for `home` and `work`, and your forge accounts, each shown for review before it is saved, then a review menu to change anything. See [identities.md](identities.md).
+5. **Install**: every tool, with a summary at the end.
 
-It then creates `.secrets` (fill in your tokens with the `secrets` command), sets `systemd=true` and `appendWindowsPath=false` in `/etc/wsl.conf`, adds two small blocks to `~/.bashrc`, and installs every tool.
+A wrong answer is asked again instead of stopping the setup.
 The first tool installation takes a while; later updates are quick.
+Afterwards fill in your tokens with the `secrets` command and check them with `gitid doctor`.
 
 ## 4. Every day
 

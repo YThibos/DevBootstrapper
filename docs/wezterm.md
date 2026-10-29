@@ -13,7 +13,7 @@ Edits to the real configuration reload automatically.
 ## Backgrounds
 
 The background follows the active pane, from rules in `.local/wezterm.lua` (not in git).
-`devup --first-run` copies [.local.example/wezterm.lua](../.local.example/wezterm.lua) there; on an existing install, copy it by hand and adjust it.
+When it is missing, `devup` creates it from [.local.example/wezterm.lua](../.local.example/wezterm.lua) (the `links` step); it never overwrites your copy.
 
 - Images are looked up in the Windows Pictures folder, or in the folder `pictures` names; a missing image is skipped.
 - The first rule that matches wins: a pane title pattern (`title`), an ssh session (`ssh = true`) or a fragment of the current directory (`cwd`).
@@ -22,6 +22,7 @@ The background follows the active pane, from rules in `.local/wezterm.lua` (not 
 - Edits apply on `Ctrl+Shift+r`.
 
 WezTerm cannot see processes inside WSL, so the shell tells it where it is: [bash/tools/wezterm.sh](../bash/tools/wezterm.sh) sends the current directory (OSC 7) at every prompt and wraps `ssh` to mark the pane while it runs.
+The next prompt clears the mark, also after an ssh that was interrupted before it returned.
 Inside tmux both pass through, thanks to `allow-passthrough` in the tmux configuration.
 
 Keys (also in `dev cheat`):

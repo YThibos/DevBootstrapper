@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# winopen - open files, folders and links with their Windows default application (WSL only).
+# It is the BROWSER inside WSL, so browser logins (gh auth login, Claude Code) open in Windows.
+# It calls Windows by its full path because appendWindowsPath is off in /etc/wsl.conf.
+set -euo pipefail
+
+# shellcheck source=lib/common.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/common.sh"
+
+[ $# -gt 0 ] || die "usage: winopen <file|folder|url>..."
+is_wsl || die "winopen works inside WSL only"
+explorer="${DEV_WINDOWS_ROOT:-/mnt/c/Windows}/explorer.exe"
+[ -x "$explorer" ] || die "cannot find $explorer (set DEV_WINDOWS_ROOT to the Windows folder)"
+
+for target in "$@"; do
+  case $target in
+    *://* | mailto:*) ;;
+    *)
+      [ -e "$target" ] || die "no such file or folder: $target"
+      target=$(wslpath -w "$target")
+      ;;
+  esac
+  # explorer.exe reports exit status 1 even when it opened the target.
+  "$explorer" "$target" || true
+done

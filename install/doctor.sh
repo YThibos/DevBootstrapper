@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# doctor - health report: tools, Docker, network, links and git identities (docs/updates.md).
+# doctor - health report: tools, apt packages, Docker, network, links and git identities (docs/updates.md).
 # Exit status 1 when a required tool is missing; everything else is reported as a warning.
 set -uo pipefail
 
@@ -57,6 +57,22 @@ while IFS='|' read -r name cmd; do
   [ -n "$cmd" ] && version=$(timeout 15 bash -c "$cmd" 2>/dev/null | tr -d '\r' | head -1)
   printf '  %s✓%s %-11s %s\n' "$_c_green" "$_c_off" "$name" "${version:-installed}"
 done < <(tools)
+
+heading "Base packages"
+if have dpkg-query; then
+  absent=()
+  while IFS= read -r pkg; do
+    # shellcheck disable=SC2016 # ${Status} is dpkg-query's field, not a shell variable
+    dpkg-query -W -f '${Status}' "$pkg" 2>/dev/null | grep -q 'install ok installed' || absent+=("$pkg")
+  done < <(base_packages)
+  if [ ${#absent[@]} -eq 0 ]; then
+    ok "every apt package in install/apt-packages.txt is installed"
+  else
+    warn "apt packages missing: ${absent[*]} (run: devup --only apt)"
+  fi
+else
+  info "no dpkg on this system"
+fi
 
 heading "Docker"
 if have docker && server=$(timeout 10 docker version --format '{{.Server.Version}}' 2>/dev/null) && [ -n "$server" ]; then

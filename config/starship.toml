@@ -1,6 +1,8 @@
 # DevBootstrapper prompt (STARSHIP_CONFIG). Shows the active git identity context inside repositories.
 "$schema" = "https://starship.rs/config-schema.json"
 add_newline = false
+# The default of 30 ms is too tight for the first prompt after a cold start or a large update.
+scan_timeout = 100
 format = "$directory$git_branch$git_state$git_status${custom.gitid}$java$nodejs$python$cmd_duration$line_break$character"
 
 [directory]

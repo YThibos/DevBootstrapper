@@ -40,7 +40,12 @@ param(
     [string]$WslConfig = 'ask'
 )
 
-function Write-Step { param([string]$Text) Write-Host "`n== $Text" -ForegroundColor Cyan }
+function Write-Step {
+    # A banner per part of the installation, set apart by blank lines (same style as devup).
+    param([string]$Text)
+    $line = '=' * 64
+    Write-Host "`n`n$line`n  $Text`n$line`n" -ForegroundColor Cyan
+}
 function Write-Info { param([string]$Text) Write-Host "   $Text" }
 function Write-Warn { param([string]$Text) Write-Host "   warning: $Text" -ForegroundColor Yellow }
 

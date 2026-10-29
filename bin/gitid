@@ -51,7 +51,7 @@ need() {
   local var=$1 question=$2 def=${3:-}
   if [ -z "${!var:-}" ]; then
     is_tty || die "missing value for: $question"
-    ask "$var" "$question" "$def"
+    ask "$var" "$question" "$def" || true
   fi
   [ -n "${!var:-}" ] || die "a value is required for: $question"
 }
@@ -69,6 +69,41 @@ ensure_secret_placeholder() {
   info "added an empty $key to .secrets - fill it in (run: secrets)"
 }
 
+token_var_for() { printf '%s_TOKEN' "$(printf '%s' "$1" | tr 'a-z-' 'A-Z_')"; }
+
+default_host() {
+  case $1 in
+    github) echo github.com ;;
+    gitlab) echo gitlab.com ;;
+  esac
+}
+
+# Writes an account. An existing account of that name is updated in place and keeps its links.
+account_save() {
+  local name=$1 forge=$2 host=$3 user=$4 auth=$5 tokenvar=$6 sshkey=$7 keypath=''
+  id_set "account.$name.forge" "$forge"
+  id_set "account.$name.host" "$host"
+  id_set "account.$name.user" "$user"
+  id_set "account.$name.auth" "$auth"
+  id_set "account.$name.tokenVar" "$tokenvar"
+  if [ "$auth" = ssh ]; then
+    id_set "account.$name.sshKey" "$sshkey"
+    keypath=$(id_expand_path "$sshkey")
+    if [ ! -f "$keypath" ] && is_tty && confirm "No key at $keypath. Generate one now?" y; then
+      mkdir -p "$(dirname "$keypath")" && chmod 700 "$(dirname "$keypath")"
+      ssh-keygen -t ed25519 -C "$user@$host ($name)" -f "$keypath"
+    fi
+  else
+    id_unset "account.$name.sshKey"
+  fi
+  ensure_secret_placeholder "$tokenvar" "$name"
+  if [ "$auth" = ssh ] && [ -f "$keypath.pub" ]; then
+    info "public key to register on $host:"
+    cat "$keypath.pub"
+  fi
+  ok "account $name saved ($forge, $host, $auth)"
+}
+
 cmd_add_account() {
   local name='' forge='' host='' user='' auth='' tokenvar='' sshkey=''
   while [ $# -gt 0 ]; do
@@ -83,45 +118,25 @@ cmd_add_account() {
       *) name=$1; shift ;;
     esac
   done
+  if is_tty && [ -z "$forge$host$user$auth$tokenvar$sshkey" ]; then
+    interactive_add_account "$name" || true
+    return 0
+  fi
   need name "Account name (e.g. github-personal)"
   require_name "$name"
   id_account_exists "$name" && die "account '$name' already exists"
   need forge "Forge (github, gitlab, other)" github
   case $forge in github | gitlab | other) ;; *) die "forge must be github, gitlab or other" ;; esac
-  local defhost=''
-  [ "$forge" = github ] && defhost=github.com
-  [ "$forge" = gitlab ] && defhost=gitlab.com
-  need host "Host" "$defhost"
+  need host "Host" "$(default_host "$forge")"
   need user "Username on $host"
   need auth "Authentication (https or ssh)" https
   case $auth in https | ssh) ;; *) die "auth must be https or ssh" ;; esac
-  if [ -z "$tokenvar" ]; then
-    tokenvar="$(printf '%s' "$name" | tr 'a-z-' 'A-Z_')_TOKEN"
-  fi
+  [ -n "$tokenvar" ] || tokenvar=$(token_var_for "$name")
   [[ $tokenvar =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "invalid token variable name '$tokenvar'"
-  if [ "$auth" = ssh ]; then
-    # Stored with a literal "~/" so the identities file survives a different Linux user name.
-    # shellcheck disable=SC2088
-    [ -n "$sshkey" ] || sshkey="~/.ssh/id_ed25519_$name"
-    local keypath
-    keypath=$(id_expand_path "$sshkey")
-    if [ ! -f "$keypath" ] && is_tty && confirm "No key at $keypath. Generate one now?" y; then
-      mkdir -p "$(dirname "$keypath")" && chmod 700 "$(dirname "$keypath")"
-      ssh-keygen -t ed25519 -C "$user@$host ($name)" -f "$keypath"
-    fi
-  fi
-  id_set "account.$name.forge" "$forge"
-  id_set "account.$name.host" "$host"
-  id_set "account.$name.user" "$user"
-  id_set "account.$name.auth" "$auth"
-  id_set "account.$name.tokenVar" "$tokenvar"
-  [ "$auth" = ssh ] && id_set "account.$name.sshKey" "$sshkey"
-  ensure_secret_placeholder "$tokenvar" "$name"
-  if [ "$auth" = ssh ] && [ -f "$(id_expand_path "$sshkey").pub" ]; then
-    info "public key to register on $host:"
-    cat "$(id_expand_path "$sshkey").pub"
-  fi
-  ok "account $name added ($forge, $host, $auth)"
+  # Stored with a literal "~/" so the identities file survives a different Linux user name.
+  # shellcheck disable=SC2088
+  if [ "$auth" = ssh ] && [ -z "$sshkey" ]; then sshkey="~/.ssh/id_ed25519_$name"; fi
+  account_save "$name" "$forge" "$host" "$user" "$auth" "$tokenvar" "$sshkey"
 }
 
 cmd_link() {
@@ -163,18 +178,37 @@ cmd_add_context() {
   need name "Context name (also the folder under sources/)"
   require_name "$name"
   id_context_exists "$name" && die "context '$name' already exists"
-  local defname
-  defname=$(git config --global --get user.name 2>/dev/null || true)
-  need fullname "Commit name for $name" "$defname"
-  need email "Commit email for $name"
-  id_set "context.$name.name" "$fullname"
-  id_set "context.$name.email" "$email"
+  if is_tty && [ -z "$fullname$email" ]; then
+    interactive_context "$name" || return 0
+  else
+    need fullname "Commit name for $name" "$(context_name_default)"
+    need email "Commit email for $name"
+    context_save "$name" "$fullname" "$email"
+  fi
   [ -n "$signkey" ] && id_set "context.$name.signingKey" "$signkey"
-  mkdir -p "$ID_SOURCES/$name"
   local acc
   for acc in "${accounts[@]}"; do cmd_link "$name" "$acc"; done
   [ "$make_default" -eq 1 ] && id_set defaults.context "$name"
-  ok "context $name added; projects in sources/$name/ use it"
+  return 0
+}
+
+# The commit name to suggest: git's global user.name, else the name of the first context.
+context_name_default() {
+  local n first
+  n=$(git config --global --get user.name 2>/dev/null || true)
+  if [ -z "$n" ]; then
+    first=$(id_contexts | head -1)
+    [ -z "$first" ] || n=$(id_get "context.$first.name")
+  fi
+  printf '%s' "$n"
+}
+
+context_save() {
+  local name=$1 fullname=$2 email=$3
+  id_set "context.$name.name" "$fullname"
+  id_set "context.$name.email" "$email"
+  mkdir -p "$ID_SOURCES/$name"
+  ok "context $name saved; projects in sources/$name/ use it"
 }
 
 cmd_remove_account() {
@@ -336,36 +370,229 @@ cmd_status() {
   fi
 }
 
+# ---------------------------------------------------------------- interactive setup
+# Every answer is checked as it is given and asked again when it is wrong. An account or context
+# is shown for review and saved only once confirmed, and the review menu at the end of the setup
+# changes or removes anything entered so far. Nothing here prompts inside a `while read` loop,
+# whose input is not the terminal.
+
+show_fields() {
+  while [ $# -gt 1 ]; do
+    printf '  %-8s %s\n' "$1" "$2" >&2
+    shift 2
+  done
+}
+
+# Asks a context's commit identity, with its current values as defaults, and saves it once
+# confirmed. Returns 1 when discarded.
+interactive_context() {
+  local name=$1 fullname email answer
+  fullname=$(id_get "context.$name.name")
+  email=$(id_get "context.$name.email")
+  [ -n "$fullname" ] || fullname=$(context_name_default)
+  heading "Context $name (projects in sources/$name/)"
+  while :; do
+    ask_required fullname "Commit name for $name" "$fullname"
+    while :; do
+      ask_required email "Commit email for $name" "$email"
+      [[ $email == ?*@?*.?* ]] && break
+      warn "$email does not look like an email address"
+      email=''
+    done
+    show_fields name "$fullname" email "$email"
+    choose answer "Save, edit or discard (s/e/d)" s sed
+    case $answer in
+      s) context_save "$name" "$fullname" "$email"; return 0 ;;
+      d) info "context $name not saved"; return 1 ;;
+    esac
+  done
+}
+
+# Asks an account's details into A_FORGE, A_HOST, A_USER, A_AUTH and A_KEY, which the caller
+# declares, with their current values as defaults.
+prompt_account_fields() {
+  local name=$1 forge_before=$A_FORGE host_default
+  ask_choice A_FORGE "Forge (github, gitlab, other)" "${A_FORGE:-github}" github gitlab other
+  host_default=$A_HOST
+  if [ -z "$host_default" ] || [ "$A_FORGE" != "$forge_before" ]; then host_default=$(default_host "$A_FORGE"); fi
+  ask_required A_HOST "Host" "$host_default"
+  ask_required A_USER "Username on $A_HOST" "$A_USER"
+  ask_choice A_AUTH "Authentication (https with a token, or ssh with a key)" "${A_AUTH:-https}" https ssh
+  if [ "$A_AUTH" = ssh ]; then
+    # shellcheck disable=SC2088 # stored with a literal "~/", see cmd_add_account
+    ask_required A_KEY "SSH key file" "${A_KEY:-~/.ssh/id_ed25519_$name}"
+  else
+    A_KEY=''
+  fi
+}
+
+show_account() {
+  local secret="token $A_TOKENVAR in .secrets"
+  [ "$A_AUTH" = https ] || secret="key $A_KEY"
+  show_fields account "$1" forge "$A_FORGE" host "$A_HOST" user "$A_USER" auth "$A_AUTH, $secret"
+}
+
+# Adds an account: name and details, then a review before anything is saved. Sets ADDED_ACCOUNT;
+# returns 1 when discarded.
+interactive_add_account() {
+  local name=${1:-} A_FORGE='' A_HOST='' A_USER='' A_AUTH='' A_KEY='' A_TOKENVAR='' answer
+  heading "New forge account"
+  while :; do
+    while :; do
+      ask_required name "Account name, e.g. github-personal, github-work, gitlab-work" "$name"
+      if ! id_valid_name "$name"; then
+        warn "use lowercase letters, digits and dashes"
+      elif id_account_exists "$name"; then
+        warn "account $name already exists; change it with [e]dit in the review menu"
+      else
+        break
+      fi
+      name=''
+    done
+    A_TOKENVAR=$(token_var_for "$name")
+    prompt_account_fields "$name"
+    show_account "$name"
+    choose answer "Save, edit or discard (s/e/d)" s sed
+    case $answer in
+      s)
+        account_save "$name" "$A_FORGE" "$A_HOST" "$A_USER" "$A_AUTH" "$A_TOKENVAR" "$A_KEY"
+        ADDED_ACCOUNT=$name
+        return 0
+        ;;
+      d) info "discarded account $name"; return 1 ;;
+    esac
+  done
+}
+
+edit_account() {
+  local name=$1 A_FORGE A_HOST A_USER A_AUTH A_KEY A_TOKENVAR answer
+  A_FORGE=$(id_get "account.$name.forge")
+  A_HOST=$(id_get "account.$name.host")
+  A_USER=$(id_get "account.$name.user")
+  A_AUTH=$(id_get "account.$name.auth")
+  A_KEY=$(id_get "account.$name.sshKey")
+  A_TOKENVAR=$(id_get "account.$name.tokenVar")
+  heading "Account $name"
+  while :; do
+    prompt_account_fields "$name"
+    show_account "$name"
+    choose answer "Save, edit or discard the changes (s/e/d)" s sed
+    case $answer in
+      s) account_save "$name" "$A_FORGE" "$A_HOST" "$A_USER" "$A_AUTH" "$A_TOKENVAR" "$A_KEY"; return 0 ;;
+      d) info "account $name unchanged"; return 0 ;;
+    esac
+  done
+}
+
+contexts_using() {
+  local ctx
+  while IFS= read -r ctx; do
+    if [ -n "$ctx" ] && id_context_accounts "$ctx" | grep -qxF "$1"; then printf '%s ' "$ctx"; fi
+  done < <(id_contexts)
+  return 0
+}
+
+# Asks which contexts use an account and links exactly those.
+prompt_account_contexts() {
+  local acc=$1 current wanted ctx unknown
+  current=$(contexts_using "$acc")
+  current=${current% }
+  if [ -z "$current" ]; then
+    current=home
+    [[ $acc != *work* ]] || current=work
+    id_context_exists "$current" || current=''
+  fi
+  while :; do
+    ask wanted "Use $acc in which contexts ($(id_contexts | paste -sd ' ' -); space separated, - for none)" "${current:--}" ||
+      wanted=$current
+    [ "$wanted" != - ] || wanted=''
+    unknown=''
+    for ctx in $wanted; do id_context_exists "$ctx" || unknown+=" $ctx"; done
+    [ -n "$unknown" ] || break
+    warn "unknown context:$unknown"
+  done
+  local contexts=()
+  mapfile -t contexts < <(id_contexts)
+  for ctx in "${contexts[@]}"; do
+    if [[ " $wanted " == *" $ctx "* ]]; then
+      cmd_link "$ctx" "$acc"
+    elif id_context_accounts "$ctx" | grep -qxF "$acc"; then
+      cmd_unlink "$ctx" "$acc"
+    fi
+  done
+}
+
+prompt_default_context() {
+  local contexts=() def
+  mapfile -t contexts < <(id_contexts)
+  [ ${#contexts[@]} -gt 0 ] || { warn "add a context first"; return 0; }
+  def=$(id_default_context)
+  [ -n "$def" ] || def=${DEV_PROFILE:-home}
+  id_context_exists "$def" || def=${contexts[0]}
+  ask_choice def "Default context on this machine, used outside sources/ (${contexts[*]})" "$def" "${contexts[@]}"
+  cmd_default "$def"
+}
+
+# pick VAR account|context - asks for an existing name; "-" goes back (returns 1).
+pick() {
+  local var=$1 kind=$2 names=() def=''
+  if [ "$kind" = account ]; then mapfile -t names < <(id_accounts); else mapfile -t names < <(id_contexts); fi
+  [ ${#names[@]} -gt 0 ] || { warn "no ${kind}s yet"; return 1; }
+  [ ${#names[@]} -ne 1 ] || def=${names[0]}
+  ask_choice "$var" "Which $kind (${names[*]}; - to go back)" "$def" "${names[@]}" -
+  [ "${!var}" != - ]
+}
+
+pick_context_name() {
+  local var=$1
+  while :; do
+    ask_required "$var" "Context name: an existing one to edit, a new one to add (- to go back)"
+    [ "${!var}" != - ] || return 1
+    id_valid_name "${!var}" && return 0
+    warn "use lowercase letters, digits and dashes"
+  done
+}
+
+review_menu() {
+  local act acc ctx
+  while :; do
+    heading "Review"
+    cmd_list
+    echo
+    choose act "[a]dd, [e]dit or [r]emove an account, [l]ink an account to contexts, add or edit a [c]ontext, [m]achine default, [d]one" d aerlcmd
+    case $act in
+      a) if interactive_add_account; then prompt_account_contexts "$ADDED_ACCOUNT"; fi ;;
+      e) if pick acc account; then edit_account "$acc"; fi ;;
+      r) if pick acc account && confirm "Remove account $acc? Its token stays in .secrets." n; then cmd_remove_account "$acc"; fi ;;
+      l) if pick acc account; then prompt_account_contexts "$acc"; fi ;;
+      c) if pick_context_name ctx; then interactive_context "$ctx" || true; fi ;;
+      m) prompt_default_context ;;
+      d) return 0 ;;
+    esac
+    id_sync
+  done
+}
+
 cmd_setup() {
   is_tty || die "gitid setup is interactive"
-  heading "Git identities"
-  echo "A context is a folder under sources/ with its own commit identity and accounts."
-  echo "Your known setup: sources/home (personal GitHub), sources/work (work GitHub and work GitLab)."
+  banner "${DEVBOOT_SECTION:+$DEVBOOT_SECTION  }Git identities" \
+    "A context is a folder under sources/ with its own commit identity and forge accounts:" \
+    "sources/home for your own projects, sources/work for work." \
+    "Each answer is shown for review before it is saved; a menu at the end changes anything."
   local ctx
   for ctx in home work; do
     if id_context_exists "$ctx"; then
-      ok "context $ctx exists"
+      ok "context $ctx exists ($(id_get "context.$ctx.email"))"
     else
-      cmd_add_context "$ctx"
+      interactive_context "$ctx" || true
     fi
   done
   while confirm "Add a forge account?" "$([ -z "$(id_accounts)" ] && echo y || echo n)"; do
-    local name=''
-    ask name "Account name (e.g. github-personal, github-work, gitlab-work)"
-    [ -n "$name" ] || continue
-    cmd_add_account "$name" || continue
-    local c=''
-    ask c "Use $name in which contexts (space separated)" "$([[ $name == *work* ]] && echo work || echo home)"
-    for ctx in $c; do cmd_link "$ctx" "$name" || true; done
+    if interactive_add_account; then prompt_account_contexts "$ADDED_ACCOUNT"; fi
   done
-  local def="${DEV_PROFILE:-}"
-  if [ -z "$(id_default_context)" ]; then
-    ask def "Default context on this machine (outside sources/)" "${def:-home}"
-    cmd_default "$def"
-  fi
+  [ -n "$(id_default_context)" ] || prompt_default_context
   id_sync
-  echo
-  cmd_list
+  review_menu
 }
 
 cmd_doctor() {
