@@ -104,7 +104,7 @@ In v1 the toolkit uses only `C:\development\tools\wezterm\` and `C:\development\
 ├── tools/                  # every mise-managed tool, tools/cache/ for all caches, tools/state/ for stamps
 ├── tmp/                    # empty scratch directory, no automatic cleanup
 ├── .local/                 # gitignored machine settings: profile, git identities, version defaults, rendered configs
-├── .local.example/         # tracked template for .local/profile.env
+├── .local.example/         # tracked templates for .local/profile.env and .local/wezterm.lua
 ├── .secrets                # gitignored credentials, chmod 600
 ├── .secrets.example        # tracked list of expected keys, no values
 ├── .github/workflows/ci.yml

@@ -178,6 +178,7 @@ first_run() {
     mkdir -p "$DEV_HOME/.local"
     cp "$DEV_HOME/.local.example/profile.env" "$profile_file"
   fi
+  [ -f "$DEV_HOME/.local/wezterm.lua" ] || cp "$DEV_HOME/.local.example/wezterm.lua" "$DEV_HOME/.local/wezterm.lua"
   load_env_file "$profile_file"
 
   local profile url noproxy cert
