@@ -140,7 +140,8 @@ The installer:
 
 ### 7.2 WSL first run
 
-`devup --first-run` is interactive once:
+`devup --first-run` is interactive once.
+Its parts are numbered sections set apart by banners, every answer is checked and asked again when wrong, and nothing is written before the captain confirms a summary of the answers (git accounts and contexts each get save, edit or discard, then a review menu):
 
 1. Asks for the machine profile (`home` on the desktop PC, `work` on the work laptop) and writes `.local/profile.env`.
 2. Runs `gitid` setup for the `home` and `work` contexts and at least one account, and sets this machine's default context from the profile.
@@ -155,7 +156,7 @@ The installer:
 `~/.bashrc` gains two small marked blocks, both calling `bash/bootstrap.sh`:
 
 1. At the very top, `bootstrap.sh env` loads the environment layer (`env.sh`, `.local/profile.env` and `.secrets`) before Ubuntu's "return if not interactive" guard, so login shells such as `bash -lc` get it too.
-   It sets `DEV_HOME`, PATH (wrappers, DevBootstrapper commands, tool binaries, mise shims), `XDG_CACHE_HOME=$DEV_HOME/tools/cache`, the `MISE_*` directories, the proxy and certificate variables and `BROWSER=wslview`.
+   It sets `DEV_HOME`, PATH (wrappers, DevBootstrapper commands, tool binaries, mise shims), `XDG_CACHE_HOME=$DEV_HOME/tools/cache`, the `MISE_*` directories, the proxy and certificate variables and `BROWSER` (`bin/winopen`).
 2. At the bottom, `bootstrap.sh` loads the interactive layer after Ubuntu's own defaults, so DevBootstrapper's history settings, aliases and prompt win.
    It sources an explicit, ordered list: `tools/*.sh` (including full `mise activate bash`), `aliases.sh`, `functions.sh`, `completions.sh` and `prompt.sh`, then `local.sh` last.
 
@@ -193,7 +194,7 @@ That is why git comes from apt; tmux has a prebuilt mise build and therefore com
 | Tool | Source | Version policy |
 |---|---|---|
 | Java JDK (8, 11, 17, 21, 25) | mise, Eclipse Temurin (OpenJDK builds) | Every LTS that is still supported, latest patch; default 25 |
-| Maven 3 and Maven 4 | mise | Both installed; default is the 3.10 line (currently 3.10.0) until the captain says otherwise; switch with `mvnuse` (section 9.1) |
+| Maven 3 and Maven 4 | mise | The 3.10 line (currently 3.10.0) is installed and the default. Maven 4 joins the shared list once 4.0.0 is released; until then `mvnuse 4.0.0-rc-<n>` installs a release candidate on one machine (section 9.1) |
 | Maven daemon (mvnd) | mise | Latest |
 | Gradle | mise | Latest |
 | Node.js and npm | mise | Current LTS; npm ships with Node |
@@ -203,11 +204,12 @@ That is why git comes from apt; tmux has a prebuilt mise build and therefore com
 | Claude Code | mise (registry entry if present, else `npm:@anthropic-ai/claude-code`) | Latest |
 | gh, glab, jq, yq, ripgrep, fd, fzf, bat, eza, zoxide, delta, lazygit, lazydocker, starship, xh, glow, shellcheck, shfmt, tmux | mise | Latest |
 | git | apt, from the `git-core` PPA when it publishes for the installed Ubuntu release, otherwise the distribution package | Latest stable |
-| Base packages (build-essential, ca-certificates, curl, wget, zip, unzip, gnupg, bash-completion, less, file, openssh-client, wslu) | apt | Distribution version |
+| Base packages (build-essential, ca-certificates, curl, wget, zip, unzip, gnupg, bash-completion, less, file, openssh-client) | apt | Distribution version; a package the release no longer offers is skipped with a warning |
 | docker CLI and compose | Docker Desktop WSL integration | Managed by Docker Desktop; `doctor` only checks it |
 | WezTerm | Nightly portable zip, through the launcher | Latest nightly |
 
-`wslu` provides `wslview`, so browser-based logins (`gh auth login`, Claude Code) open the Windows browser.
+`bin/winopen` is the `BROWSER` inside WSL, so browser-based logins (`gh auth login`, Claude Code) open the Windows browser.
+It calls `explorer.exe` by its full path, because `appendWindowsPath=false` keeps Windows off PATH; `wslu`, which used to provide `wslview`, is no longer packaged from Ubuntu 26.04 on.
 Projects pin their own versions through a project `.mise.toml` or `.java-version`, which mise honours automatically.
 
 ### 9.1 Switching the default version
@@ -332,7 +334,7 @@ Other terminals get only the reminder from section 8.
 
 ### 11.4 Version pinning
 
-Runtimes keep their major or LTS line fixed (Java per LTS, Node `lts`, Maven 3.10 and 4), so updates stay within that line.
+Runtimes keep their major or LTS line fixed (Java per LTS, Node `lts`, Maven 3.10), so updates stay within that line.
 CLI tools follow `latest`.
 Moving a runtime to a new major version is a deliberate edit of `config/mise/config.toml`.
 
@@ -376,7 +378,7 @@ How the work proxy actually behaves (authentication, PAC file, TLS inspection) i
 - The shell layer (`bash/`) and most of `config/` are plain bash and standard configuration files.
   They work unchanged in WSL under any terminal, such as Windows Terminal; only the daily update tab is WezTerm-specific, and the shell reminder covers that case.
 - They also work on native Ubuntu or Debian, including over SSH.
-  Windows-only pieces (`wslview`, `/mnt/c` sync, `wsl.conf`) are guarded by WSL detection.
+  Windows-only pieces (`winopen`, `/mnt/c` sync, `wsl.conf`) are guarded by WSL detection.
 - `devup` is Debian- and Ubuntu-specific because of apt.
   Another Linux distribution would need only a package-manager adapter, because mise itself is distribution-independent.
 - The Windows-native side (Git Bash for Windows, PowerShell and Command Prompt) is a different environment: Windows paths, no apt, Windows-native binaries and a different home.

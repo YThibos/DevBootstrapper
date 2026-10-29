@@ -1,5 +1,7 @@
 # Base packages from apt (docs/tools.md). Everything with a prebuilt mise binary comes from mise.
-# One package per line; "[wsl]" marks packages installed only inside WSL.
+# One package per line; "[wsl]" marks packages installed only inside WSL. A package this Ubuntu
+# release does not offer is skipped with a warning, so one missing name never blocks the rest.
+# Windows integration needs no package: bin/winopen calls Windows directly.
 build-essential
 ca-certificates
 curl
@@ -12,4 +14,3 @@ bash-completion
 less
 file
 openssh-client
-wslu [wsl]

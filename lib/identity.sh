@@ -14,11 +14,12 @@ ID_CONTEXTS_DIR="$ID_DIR/contexts"
 ID_SOURCES="$DEV_HOME/sources"
 
 # Lookups print nothing for a missing value and still succeed, so callers under `set -e` can
-# use them in assignments.
-id_get() { [ -f "$ID_FILE" ] && git config -f "$ID_FILE" --get "$1" 2>/dev/null; return 0; }
-id_get_all() { [ -f "$ID_FILE" ] && git config -f "$ID_FILE" --get-all "$1" 2>/dev/null; return 0; }
+# use them in assignments and as plain commands. A failing git config must not end an && list:
+# under `set -e` the last command of such a list still exits the script.
+id_get() { [ ! -f "$ID_FILE" ] || git config -f "$ID_FILE" --get "$1" 2>/dev/null || true; }
+id_get_all() { [ ! -f "$ID_FILE" ] || git config -f "$ID_FILE" --get-all "$1" 2>/dev/null || true; }
 id_set() { mkdir -p "$ID_DIR" && git config -f "$ID_FILE" "$1" "$2"; }
-id_unset() { [ -f "$ID_FILE" ] && git config -f "$ID_FILE" --unset-all "$1" 2>/dev/null; return 0; }
+id_unset() { [ ! -f "$ID_FILE" ] || git config -f "$ID_FILE" --unset-all "$1" 2>/dev/null || true; }
 
 id_valid_name() { [[ $1 =~ ^[a-z0-9][a-z0-9-]*$ ]]; }
 

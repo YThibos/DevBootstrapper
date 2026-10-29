@@ -32,7 +32,6 @@ return {
       },
     },
     { ssh = true, image = 'forkbomb.jpg' },
-    { cwd = 'firstofficer', image = 'firstmate.jpg' },
-    { cwd = 'development/sources', image = 'lady-justitia.jpg' },
+    -- A folder of your own, for example: { cwd = 'sources/home/stellaris', image = 'nebula.jpg' },
   },
 }

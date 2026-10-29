@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # use-version - switch this machine's default version of a tool (docs/tools.md).
 #: use-version [tool] [version] | show or switch a tool's default version on this machine
-#: mvnuse [version] | show or switch the default Maven (e.g. mvnuse 4, mvnuse 3.10)
+#: mvnuse [version] | show or switch the default Maven (e.g. mvnuse 4.0.0-rc-7, mvnuse 3.10)
 #: jdkuse [version] | show or switch the default JDK (e.g. jdkuse 21)
 #
 # The shared manifest (config/mise/config.toml) lists the installed version lines; its first

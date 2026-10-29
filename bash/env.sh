@@ -85,8 +85,8 @@ export DEV_MAVEN_MIRROR_OF
 # WSL: open links and files with Windows.
 if [ -n "${WSL_DISTRO_NAME:-}" ] || [ -e /proc/sys/fs/binfmt_misc/WSLInterop ]; then
   export DEV_IS_WSL=1
-  if [ -z "${BROWSER:-}" ] && [ -x /usr/bin/wslview ]; then
-    export BROWSER=wslview
+  if [ -z "${BROWSER:-}" ]; then
+    export BROWSER="$DEV_HOME/bin/winopen"
   fi
 fi
 

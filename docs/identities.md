@@ -22,6 +22,7 @@ This covers commits, `git clone`, fetch and push (HTTPS and SSH), and the `gh` a
 
 ```bash
 gitid                               # what applies here and why
+gitid setup                         # guided: contexts, accounts, default, then a review menu
 gitid list                          # every account and context (also: dev ids)
 gitid add-account github-personal   # guided; or --forge --host --user --auth --token-var --ssh-key
 gitid add-context client-x          # creates sources/client-x/
@@ -32,6 +33,10 @@ gitid as github-personal -- gh repo create my-tool --private
 gitid doctor                        # tokens, keys and generated config
 clone https://github.com/me/tool    # clones into the current context's folder and cd's into it
 ```
+
+The guided commands check each answer and ask again when it is wrong.
+Each account and context is shown for review (save, edit or discard) before anything is written.
+`gitid setup` ends in a review menu that adds, edits, removes and links accounts, edits contexts and sets the machine default; it can be run again at any time.
 
 Example: to work on your own tooling from the work laptop, clone it under `sources/home/`; commits use your private email and pushes use your personal account.
 

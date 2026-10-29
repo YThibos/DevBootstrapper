@@ -6,7 +6,9 @@
 
 [tools]
 java = ["temurin-25", "temurin-21", "temurin-17", "temurin-11", "temurin-8"]
-maven = ["3.10", "4"]
+# Maven 4 has only release candidates so far, which a version line such as "4" never matches;
+# add it back here once 4.0.0 is out. Until then, on one machine: mvnuse 4.0.0-rc-7.
+maven = ["3.10"]
 mvnd = "latest"
 gradle = "latest"
 node = "lts"

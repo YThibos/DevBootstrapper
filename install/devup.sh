@@ -170,56 +170,94 @@ ensure_wsl_conf() {
 
 # ---------------------------------------------------------------------------- first run
 
+FIRST_RUN_SECTIONS=5
+
+# Asks for the profile, proxy and certificate, shows the answers and asks again until they are
+# right; only then writes .local/profile.env. Earlier answers are the defaults of a second pass.
+ask_machine_settings() {
+  local profile_file=$1 profile=${DEV_PROFILE:-home} url=${DEV_PROXY_URL:-} noproxy=${DEV_NO_PROXY:-}
+  local cert=${DEV_CA_CERT:-} cert_path='' detected=${DEVBOOT_DETECTED_PROXY:-${HTTPS_PROXY:-${https_proxy:-}}}
+  [ -n "$url" ] || url=$detected
+  while :; do
+    banner "1/$FIRST_RUN_SECTIONS  Machine profile" \
+      "home is the desktop PC, work the work laptop." \
+      "The profile decides the default git context and whether network questions follow."
+    ask_choice profile "Machine profile (home or work)" "$profile" home work
+
+    banner "2/$FIRST_RUN_SECTIONS  Network" \
+      "A proxy and a corporate certificate are only needed on a corporate network."
+    if [ "$profile" = work ] || [ -n "$url" ]; then
+      ask url "Proxy URL, e.g. http://proxy.example:8080 (- for none)" "$url"
+      [ "$url" != - ] || url=''
+      if [ -n "$url" ]; then
+        ask noproxy "Hosts that bypass the proxy (comma separated)" "${noproxy:-localhost,127.0.0.1,::1}"
+      fi
+    else
+      info "no proxy detected; none needed on a home machine"
+    fi
+    if [ "$profile" = work ]; then
+      while :; do
+        ask cert "Corporate root certificate file, PEM, Windows or Linux path (- for none)" "${cert:--}"
+        [ "$cert" != - ] || { cert_path=''; break; }
+        cert_path=$cert
+        case $cert_path in [A-Za-z]:*) have wslpath && cert_path=$(wslpath -u "$cert_path") ;; esac
+        [ -r "$cert_path" ] && break
+        warn "cannot read $cert_path"
+      done
+    else
+      cert_path=''
+    fi
+
+    heading "Your answers"
+    printf '  %-13s %s\n' profile "$profile" proxy "${url:-none}" >&2
+    [ -z "$url" ] || printf '  %-13s %s\n' "no proxy for" "$noproxy" >&2
+    printf '  %-13s %s\n' certificate "${cert_path:-none}" >&2
+    confirm "Is this right?" y && break
+    info "again, with your answers as the defaults"
+  done
+
+  set_env_value "$profile_file" DEV_PROFILE "$profile"
+  set_env_value "$profile_file" DEV_PROXY_URL "$url"
+  [ -z "$url" ] || set_env_value "$profile_file" DEV_NO_PROXY "$noproxy"
+  local stored="$DEV_HOME/.local/certs/corporate-root.crt"
+  if [ -n "$cert_path" ]; then
+    mkdir -p "$DEV_HOME/.local/certs"
+    [ "$(readlink -f "$cert_path")" = "$(readlink -f "$stored")" ] || cp "$cert_path" "$stored"
+    set_env_value "$profile_file" DEV_CA_CERT "$stored"
+  else
+    set_env_value "$profile_file" DEV_CA_CERT ''
+  fi
+  ok "machine profile saved in .local/profile.env"
+}
+
 first_run() {
   is_tty || die "devup --first-run is interactive; run it in a terminal"
-  heading "First-run setup"
   local profile_file="$DEV_HOME/.local/profile.env"
   if [ ! -f "$profile_file" ]; then
     mkdir -p "$DEV_HOME/.local"
     cp "$DEV_HOME/.local.example/profile.env" "$profile_file"
   fi
-  [ -f "$DEV_HOME/.local/wezterm.lua" ] || cp "$DEV_HOME/.local.example/wezterm.lua" "$DEV_HOME/.local/wezterm.lua"
   load_env_file "$profile_file"
+  ask_machine_settings "$profile_file"
 
-  local profile url noproxy cert
-  ask profile "Machine profile: home (desktop PC) or work (work laptop)" "${DEV_PROFILE:-home}"
-  case $profile in home | work) ;; *) die "profile must be home or work" ;; esac
-  set_env_value "$profile_file" DEV_PROFILE "$profile"
-
-  local detected=${DEVBOOT_DETECTED_PROXY:-${HTTPS_PROXY:-${https_proxy:-}}}
-  if [ "$profile" = work ] || [ -n "$detected" ] || [ -n "${DEV_PROXY_URL:-}" ]; then
-    ask url "Proxy URL, e.g. http://proxy.example:8080 (empty for none)" "${DEV_PROXY_URL:-$detected}"
-    set_env_value "$profile_file" DEV_PROXY_URL "$url"
-    if [ -n "$url" ]; then
-      ask noproxy "Hosts that bypass the proxy (comma separated)" "${DEV_NO_PROXY:-localhost,127.0.0.1,::1}"
-      set_env_value "$profile_file" DEV_NO_PROXY "$noproxy"
-    fi
-  fi
-
-  if [ "$profile" = work ]; then
-    ask cert "Corporate root certificate file, PEM, Windows or Linux path (empty for none)" ""
-    if [ -n "$cert" ]; then
-      case $cert in [A-Za-z]:*) have wslpath && cert=$(wslpath -u "$cert") ;; esac
-      [ -r "$cert" ] || die "cannot read $cert"
-      mkdir -p "$DEV_HOME/.local/certs"
-      cp "$cert" "$DEV_HOME/.local/certs/corporate-root.crt"
-      set_env_value "$profile_file" DEV_CA_CERT "$DEV_HOME/.local/certs/corporate-root.crt"
-    fi
-  fi
-  ok "machine profile saved in .local/profile.env"
-
+  banner "3/$FIRST_RUN_SECTIONS  Shell and WSL" \
+    ".secrets for your tokens, /etc/wsl.conf (asks for your sudo password) and two blocks in ~/.bashrc."
   if [ ! -f "$DEV_HOME/.secrets" ]; then
     cp "$DEV_HOME/.secrets.example" "$DEV_HOME/.secrets"
     ok "created .secrets from .secrets.example"
   fi
   chmod 600 "$DEV_HOME/.secrets"
-
   ensure_wsl_conf
   ensure_bashrc
 
   # Reload the environment with the new profile before identities and tools.
   . "$DEV_HOME/bash/env.sh"
-  "$DEV_HOME/bin/gitid" setup || warn "git identity setup did not finish; run gitid setup later"
+  DEVBOOT_SECTION="4/$FIRST_RUN_SECTIONS" "$DEV_HOME/bin/gitid" setup ||
+    warn "git identity setup did not finish; run gitid setup later"
+
+  banner "5/$FIRST_RUN_SECTIONS  Install" \
+    "Every tool installs now; the first time takes a few minutes." \
+    "Each step reports ok or FAILED, and a summary follows at the end."
 }
 
 # ---------------------------------------------------------------------------- steps
@@ -290,17 +328,6 @@ step_certs() {
   ok "corporate certificate added to Ubuntu's trust store"
 }
 
-apt_packages() {
-  local line pkg tag
-  while IFS= read -r line; do
-    line=${line%%#*}
-    read -r pkg tag <<<"$line"
-    [ -n "$pkg" ] || continue
-    if [ "$tag" = "[wsl]" ] && ! is_wsl; then continue; fi
-    printf '%s\n' "$pkg"
-  done <"$DEV_HOME/install/apt-packages.txt"
-}
-
 step_apt() {
   have apt-get || { info "no apt-get on this system"; return 0; }
   local conf=/etc/apt/apt.conf.d/95devbootstrapper-proxy tmp
@@ -333,10 +360,15 @@ step_apt() {
     fi
   fi
 
-  local pkgs=()
-  mapfile -t pkgs < <(apt_packages)
+  # apt-get install refuses the whole list over one unknown name, so offer only what exists.
+  local pkgs=() pkg available=() unavailable=()
+  mapfile -t pkgs < <(base_packages)
+  for pkg in "${pkgs[@]}"; do
+    if apt-cache show "$pkg" >/dev/null 2>&1; then available+=("$pkg"); else unavailable+=("$pkg"); fi
+  done
+  [ ${#unavailable[@]} -eq 0 ] || warn "not offered by this Ubuntu release, skipped: ${unavailable[*]}"
   info "installing base packages"
-  as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${pkgs[@]}" >/dev/null || return 1
+  as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${available[@]}" >/dev/null || return 1
   info "upgrading packages"
   as_root env DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq >/dev/null || return 1
   ok "apt packages installed and upgraded"
@@ -373,6 +405,10 @@ step_links() {
     mkdir -p "$DEV_HOME/.local/mise"
     printf '%s\n%s\n' '# Machine-local tool defaults, written by use-version (docs/tools.md). Not shared.' '[tools]' \
       >"$DEV_HOME/.local/mise/config.toml"
+  fi
+  if [ ! -f "$DEV_HOME/.local/wezterm.lua" ]; then
+    cp "$DEV_HOME/.local.example/wezterm.lua" "$DEV_HOME/.local/wezterm.lua"
+    info "created .local/wezterm.lua from .local.example (WezTerm backgrounds)"
   fi
   local src link mode r count=0
   while IFS='|' read -r src link mode; do
@@ -476,13 +512,13 @@ if [ "$FIRST_RUN" -eq 1 ]; then
   first_run
 fi
 
-[ "$DAILY" -eq 1 ] && heading "Daily DevBootstrapper update ($(today))"
+[ "$DAILY" -eq 1 ] && banner "Daily DevBootstrapper update ($(today))"
 
 RESULTS=()
 FAILED=0
 for step in "${STEPS[@]}"; do
   wanted "$step" || continue
-  heading "$step"
+  rule "$step"
   if "step_${step//-/_}"; then
     RESULTS+=("ok      $step")
   else
@@ -491,7 +527,7 @@ for step in "${STEPS[@]}"; do
   fi
 done
 
-heading "Summary"
+rule "Summary"
 for r in "${RESULTS[@]}"; do
   case $r in FAILED*) printf '  %s%s%s\n' "$_c_red" "$r" "$_c_off" ;; *) printf '  %s\n' "$r" ;; esac
 done
@@ -508,8 +544,15 @@ fi
 if [ -f "$DEV_TOOLS/state/needs-wsl-restart" ] && [ "$FIRST_RUN" -eq 0 ]; then
   warn "WSL still needs a restart for /etc/wsl.conf: from Windows run wsl --terminate ${WSL_DISTRO_NAME:-<distro>}"
 fi
-if [ "$FIRST_RUN" -eq 1 ] && [ "$FAILED" -eq 0 ]; then
-  echo
-  ok "DevBootstrapper is installed. Open a new shell (or run: reload), then: dev"
+if [ "$FIRST_RUN" -eq 1 ]; then
+  if [ "$FAILED" -eq 0 ]; then
+    banner "DevBootstrapper is installed" \
+      "1. Open a new shell (or run: reload), then: dev" \
+      "2. Fill in your tokens: secrets, then check them: gitid doctor"
+  else
+    banner "Setup finished with failed steps" \
+      "Fix the problems reported above, then run: devup" \
+      "Your answers are saved; the questions are not asked again."
+  fi
 fi
 exit "$FAILED"

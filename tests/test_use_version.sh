@@ -9,12 +9,13 @@ local_cfg="$DEV/.local/mise/config.toml"
 
 out=$(uv maven)
 assert_contains "$out" "* 3.10" "Maven 3.10 is the shared default"
-assert_contains "$out" "  4" "Maven 4 is installed alongside"
+assert_not_contains "$(grep '^maven' "$DEV/config/mise/config.toml")" '"4"' "no Maven 4 line until 4.0.0 is released"
 
-run "$DEV/bin/mvnuse" 4 >/dev/null 2>&1
-assert_eq "$(grep '^maven' "$local_cfg")" 'maven = ["4", "3.10"]' "mvnuse 4 writes a machine-local default that keeps 3.10 installed"
+out=$(run "$DEV/bin/mvnuse" 4.0.0-rc-7 2>&1)
+assert_contains "$out" "not in the shared manifest" "a Maven 4 release candidate is allowed on one machine"
+assert_eq "$(grep '^maven' "$local_cfg")" 'maven = ["4.0.0-rc-7", "3.10"]' "mvnuse writes a machine-local default that keeps 3.10 installed"
 assert_true "the shared manifest is unchanged" cmp -s "$DEV/config/mise/config.toml" "$REPO/config/mise/config.toml"
-assert_contains "$(uv maven)" "* 4" "use-version shows 4 as this machine's default"
+assert_contains "$(uv maven)" "* 4.0.0-rc-7" "use-version shows it as this machine's default"
 assert_contains "$(uv maven)" "shared default: 3.10" "and names the shared default"
 
 run "$DEV/bin/jdkuse" 21 >/dev/null 2>&1
