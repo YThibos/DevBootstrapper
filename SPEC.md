@@ -204,7 +204,7 @@ That is why git comes from apt; tmux has a prebuilt mise build and therefore com
 | Claude Code | mise (registry entry if present, else `npm:@anthropic-ai/claude-code`) | Latest |
 | gh, glab, jq, yq, ripgrep, fd, fzf, bat, eza, zoxide, delta, lazygit, lazydocker, starship, xh, glow, shellcheck, shfmt, tmux | mise | Latest |
 | git | apt, from the `git-core` PPA when it publishes for the installed Ubuntu release, otherwise the distribution package | Latest stable |
-| Base packages (build-essential, ca-certificates, curl, wget, zip, unzip, gnupg, bash-completion, less, file, openssh-client) | apt | Distribution version; a package the release no longer offers is skipped with a warning |
+| Base packages (build-essential, zlib1g-dev for GraalVM Native Image, ca-certificates, curl, wget, zip, unzip, gnupg, bash-completion, less, file, openssh-client) | apt | Distribution version; a package the release no longer offers is skipped with a warning |
 | docker CLI and compose | Docker Desktop WSL integration | Managed by Docker Desktop; `doctor` only checks it |
 | WezTerm | Nightly portable zip, through the launcher | Latest nightly |
 
