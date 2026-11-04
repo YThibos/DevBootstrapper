@@ -67,6 +67,7 @@ assert_contains "$out" "Fira Code is installed" "a second run changes nothing"
 assert_eq "$(wc -l <"$SANDBOX/curl.log")" 1 "and downloads nothing"
 rm "$DEV/.local/fonts/FiraCode-Regular.ttf" "$FAKEBIN/curl"
 printf '#!/usr/bin/env bash\nexit 22\n' >"$FAKEBIN/curl"
+chmod +x "$FAKEBIN/curl"
 assert_contains "$(devup --only fonts)" "FAILED  fonts" "a failed download fails the step"
 
 # Completions: bash as before, and zsh only when opted in.
