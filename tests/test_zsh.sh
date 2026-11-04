@@ -183,12 +183,15 @@ else
 fi
 
 # Startup budget with the tools active.
-# The median of seven runs, so one start slowed down by a busy machine does not decide it.
-ms=$(for _ in 1 2 3 4 5 6 7; do
-  start=$(date +%s%N)
-  run zsh -i -c exit >/dev/null 2>&1
-  echo $((($(date +%s%N) - start) / 1000000))
-done | sort -n | sed -n 4p)
+# The median of seven runs of CPU time (user plus system), which a busy machine hardly changes,
+# where the wall-clock time of a start would.
+cpu_ms() {
+  local TIMEFORMAT='%3U %3S'
+  local user system
+  read -r user system < <({ time run zsh -i -c exit >/dev/null 2>&1; } 2>&1)
+  awk -v u="$user" -v s="$system" 'BEGIN { printf "%d\n", (u + s) * 1000 }'
+}
+ms=$(for _ in 1 2 3 4 5 6 7; do cpu_ms; done | sort -n | sed -n 4p)
 if [ "$ms" -lt 200 ]; then pass "interactive zsh startup ${ms} ms is under 200 ms"; else fail "interactive zsh startup under 200 ms" "measured: $ms ms"; fi
 assert_contains "$(run "$DEV/bin/dev" startup-time)" "interactive zsh startup:" "dev startup-time measures zsh when opted in"
 

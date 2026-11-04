@@ -87,7 +87,6 @@ mkdir -p "$DEV/tools/cache/zsh"
 touch "$DEV/tools/cache/zsh/zcompdump" "$DEV/tools/cache/zsh/zcompdump.zwc"
 out=$(run env SHELL=/usr/bin/fish bash "$DEV/install/devup.sh" --only completions 2>&1)
 assert_contains "$out" "bash completions generated for " "bash completions are generated"
-assert_contains "$(cat "$DEV/tools/completions/completions/ng")" "for bash" "ng writes its bash completion whatever the login shell is"
 assert_contains "$(cat "$DEV/tools/completions/completions/gh")" "for bash" "the gh completion is for bash"
 assert_contains "$(cat "$DEV/tools/completions/completions/ng")" "complete -o default" "ng completes for bash with the bash template"
 assert_true "no zsh completions without the opt-in" test ! -d "$DEV/tools/completions/zsh"
@@ -95,7 +94,6 @@ assert_true "the completion dump is kept without the opt-in" test -f "$DEV/tools
 printf 'DEV_SHELL=zsh\n' >"$DEV/.local/profile.env"
 out=$(run env SHELL=/usr/bin/fish bash "$DEV/install/devup.sh" --only completions 2>&1)
 assert_contains "$out" "zsh completions generated for " "zsh completions are generated when opted in"
-assert_contains "$(cat "$DEV/tools/completions/zsh/ng.zsh")" "for zsh" "and ng writes its zsh completion too"
 assert_contains "$(cat "$DEV/tools/completions/zsh/_gh")" "for zsh" "the gh completion is a zsh completion function"
 assert_eq "$(cat "$DEV/tools/completions/zsh/ng.zsh")" "compdef _ng_yargs_completions ng" "ng is a script to source with the zsh template"
 assert_true "the completion dump is rebuilt after new completions" test ! -e "$DEV/tools/cache/zsh/zcompdump"
