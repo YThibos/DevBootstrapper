@@ -123,6 +123,7 @@ base_packages() {
     read -r pkg tag <<<"$line"
     [ -n "$pkg" ] || continue
     if [ "$tag" = "[wsl]" ] && ! is_wsl; then continue; fi
+    if [ "$tag" = "[zsh]" ] && [ "${DEV_SHELL:-bash}" != zsh ]; then continue; fi
     printf '%s\n' "$pkg"
   done <"$DEV_HOME/install/apt-packages.txt"
 }

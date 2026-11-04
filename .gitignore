@@ -17,10 +17,12 @@
 !/lib/
 !/tests/
 !/windows/
+!/zsh/
 !/sources/
 !/tmp/
 
 /bash/local.sh
+/zsh/local.zsh
 
 # sources/: only the two standard context folders exist in the repository, never their projects.
 /sources/*

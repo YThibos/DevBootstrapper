@@ -1,8 +1,10 @@
 # shellcheck shell=bash
-# Environment layer (docs/shell.md): loaded for every bash shell, interactive or not, through
-# the top block in ~/.bashrc. It must stay silent, fast, and free of network calls and sudo.
+# Environment layer (docs/shell.md): loaded for every shell, interactive or not, through the top
+# block in ~/.bashrc, or in ~/.zshenv when zsh is the opted-in shell. It is written in the subset
+# bash and zsh share, and must stay silent, fast, and free of network calls and sudo.
+# In zsh, $0 is the file being sourced, where bash has BASH_SOURCE.
 
-DEV_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+DEV_HOME="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd -P)"
 DEV_TOOLS="$DEV_HOME/tools"
 export DEV_HOME DEV_TOOLS
 
@@ -26,6 +28,13 @@ __devboot_load() {
 # Machine profile (home or work, proxy, mirrors, certificate), then credentials.
 __devboot_load "$DEV_HOME/.local/profile.env"
 __devboot_load "$DEV_HOME/.secrets"
+
+# The interactive shell: bash unless the machine opted in to zsh (docs/shell.md).
+case ${DEV_SHELL:-} in
+  zsh) ;;
+  *) DEV_SHELL=bash ;;
+esac
+export DEV_SHELL
 
 # Every cache and every mise-managed tool lives under tools/.
 export XDG_CACHE_HOME="$DEV_TOOLS/cache"

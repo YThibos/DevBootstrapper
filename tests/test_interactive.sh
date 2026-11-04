@@ -12,6 +12,10 @@ if ! command -v script >/dev/null 2>&1; then
   exit
 fi
 
+# The first run changes /etc/wsl.conf with sudo on WSL; here sudo succeeds without doing anything.
+printf '#!/usr/bin/env bash\nexit 0\n' >"$FAKEBIN/sudo"
+chmod +x "$FAKEBIN/sudo"
+
 # typed "command" answer... - runs a command on a terminal and types one answer per line.
 typed() {
   local cmd=$1
@@ -55,17 +59,21 @@ rm -rf "$DEV/.local/git"
 out=$(typed "bash $DEV/install/devup.sh --first-run --only render" \
   office work "http://proxy.example:3128" "" /nonexistent.pem - n \
   "" "" "" "" y \
+  fish zsh \
   "Home Me" "home@example.com" s "Work Me" "work@example.com" s n "" d)
 profile=$(cat "$DEV/.local/profile.env")
 assert_contains "$out" "1/5  Machine profile" "the first run is split into numbered sections"
 assert_contains "$out" "4/5  Git identities" "gitid setup continues the numbering"
 assert_contains "$out" "5/5  Install" "the install has its own section"
 assert_contains "$out" "answer one of: home work" "a wrong profile is asked again"
+assert_contains "$out" "answer one of: bash zsh" "a wrong shell is asked again"
 assert_contains "$out" "cannot read /nonexistent.pem" "an unreadable certificate is asked again"
 assert_contains "$out" "again, with your answers as the defaults" "answering no to the summary goes through the questions again"
 assert_contains "$profile" "DEV_PROFILE=work" "the profile is saved"
 assert_contains "$profile" "DEV_PROXY_URL=http://proxy.example:3128" "the proxy is kept from the first pass"
 assert_contains "$profile" "DEV_CA_CERT=" "no certificate is configured"
+assert_contains "$profile" "DEV_SHELL=zsh" "the shell is saved"
+assert_contains "$(cat "$HOME/.zshrc")" "DevBootstrapper (zsh)" "choosing zsh adds the zsh blocks"
 assert_eq "$(ids --get defaults.context)" "work" "the work profile suggests the work context as the default"
 assert_contains "$out" "ok      render" "the install steps run after the questions"
 
