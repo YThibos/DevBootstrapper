@@ -83,6 +83,8 @@ ZSHENV_BEGIN='# >>> DevBootstrapper (zsh env) >>>'
 ZSHENV_END='# <<< DevBootstrapper (zsh env) <<<'
 ZSHRC_BEGIN='# >>> DevBootstrapper (zsh) >>>'
 ZSHRC_END='# <<< DevBootstrapper (zsh) <<<'
+# Ends a BEGIN marker when devup had to end the user's last line first, so removal can undo it.
+ADDED_LINE_BREAK=' (devup ended the line above)'
 
 # bootstrap_ref SCRIPT - how a shell startup file refers to a bootstrap script of the dev home.
 bootstrap_ref() {
@@ -106,21 +108,27 @@ add_rc_block() {
     cat "$tmp" >"$rc"
     rm -f "$tmp"
   else
-    [ -z "$(tail -c1 "$rc")" ] || echo >>"$rc"
+    if [ -n "$(tail -c1 "$rc")" ]; then
+      echo >>"$rc"
+      begin+=$ADDED_LINE_BREAK
+    fi
     printf '%s\n%s\n%s\n%s\n' "$begin" "$comment" "$line" "$end" >>"$rc"
   fi
 }
 
-# remove_rc_block FILE BEGIN END - removes a marked block. Returns 0 when FILE had it, and
-# leaves a FILE without it untouched.
+# remove_rc_block FILE BEGIN END - removes a marked block, and the line break devup added before
+# it when nothing follows the block. Returns 0 when FILE had it, and leaves a FILE without it
+# untouched.
 remove_rc_block() {
   local rc=$1 begin=$2 end=$3 tmp
   grep -qsF "$begin" "$rc" || return 1
   tmp=$(mktemp)
-  awk -v b="$begin" -v e="$end" '
-    $0 == b { skip = 1; next }
+  awk -v b="$begin" -v j="$begin$ADDED_LINE_BREAK" -v e="$end" '
+    $0 == b || $0 == j { skip = 1; unbreak = ($0 == j); next }
     $0 == e { skip = 0; next }
-    !skip { print }
+    skip { next }
+    { if (n++) print last; last = $0; unbreak = 0 }
+    END { if (n) printf "%s%s", last, (unbreak ? "" : "\n") }
   ' "$rc" >"$tmp"
   cat "$tmp" >"$rc"
   rm -f "$tmp"

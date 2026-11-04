@@ -211,6 +211,6 @@ assert_eq "$(zsh_i 'alias mine; echo $+functions[reload]')" "mine=true
 1" "the block goes on its own line after a last line without a newline"
 printf 'DEV_SHELL=bash\n' >"$DEV/.local/profile.env"
 devup --only links >/dev/null
-assert_eq "$(od -c "$HOME/.zshrc")" "$(printf 'alias mine=true\n' | od -c)" "opting out keeps the user's line, now ending in a newline"
+assert_eq "$(od -c "$HOME/.zshrc")" "$(printf 'alias mine=true' | od -c)" "opting out restores a last line without a newline byte for byte"
 
 finish
