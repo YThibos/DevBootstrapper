@@ -558,7 +558,7 @@ step_identities() {
 
 step_completions() {
   local bash_count zsh_count
-  bash_count=$(generate_completions bash "$DEV_TOOLS/completions/completions" '' bash_completion_commands)
+  bash_count=$(generate_completions bash "$DEV_TOOLS/completions/completions" '' completion_commands)
   ok "bash completions generated for $bash_count tools"
   zsh_opted_in || return 0
   zsh_count=$(generate_completions zsh "$DEV_TOOLS/completions/zsh" _ zsh_completion_commands)
@@ -569,6 +569,8 @@ step_completions() {
 # generate_completions SHELL DIR PREFIX TABLE - writes the completion of every installed tool in
 # TABLE to DIR/PREFIX<name> (a name ending in .zsh is a script to source and takes no prefix),
 # keeping the previous file when a tool fails. Prints the count.
+# Some tools, ng among them, write the completion for the shell in $SHELL, which is the login
+# shell and not the one the file is for; so SHELL is set for each tool.
 generate_completions() {
   local shell=$1 dir=$2 prefix=$3 table=$4 name command words file tmp n=0
   mkdir -p "$dir"
@@ -576,7 +578,7 @@ generate_completions() {
   while IFS='|' read -r name command; do
     read -ra words <<<"${command//@SHELL@/$shell}"
     have "${words[0]}" || continue
-    if timeout 30 "${words[@]}" </dev/null >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    if SHELL="/usr/bin/$shell" timeout 30 "${words[@]}" </dev/null >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
       file=$prefix$name
       [[ $name == *.zsh ]] && file=$name
       cp "$tmp" "$dir/$file"
@@ -588,7 +590,7 @@ generate_completions() {
 }
 
 # NAME|COMMAND, one tool per line; @SHELL@ stands for the shell the completion is for.
-bash_completion_commands() {
+completion_commands() {
   cat <<'LIST'
 gh|gh completion -s @SHELL@
 glab|glab completion -s @SHELL@
@@ -611,7 +613,7 @@ LIST
 # zsh takes the same tools as completion functions (_name), except npm, whose script is for
 # bash only, and ng, whose script is sourced.
 zsh_completion_commands() {
-  bash_completion_commands | grep -v -e '^npm|' -e '^ng|'
+  completion_commands | grep -v -e '^npm|' -e '^ng|'
   echo 'ng.zsh|ng completion script'
 }
 
