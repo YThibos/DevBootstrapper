@@ -19,7 +19,7 @@ caret_b=$'\x02'
 
 keys=$(harness keys | sed "s/$caret_b/^B/g; s/$(printf '\r')/^M/g")
 while IFS='@' read -r key command; do
-  assert_contains "$keys" "$key SendString ^B:$command^M" "$key sends the tmux command: $command"
+  assert_contains "$keys" "$key SendString ^B: | pause 50ms | SendString $command^M" "$key opens tmux's command prompt, then sends: $command"
 done <<'TABLE'
 ALT+Enter@split-window -h
 ALT|SHIFT+Enter@split-window -v
