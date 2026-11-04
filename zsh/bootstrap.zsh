@@ -14,6 +14,7 @@ if [[ ${__devboot_env_loaded:-} != $$ ]]; then
 fi
 
 if [[ ${1:-} == env ]]; then
+  skip_global_compinit=1
   unset __devboot_zsh __devboot_bash
   return 0
 fi
@@ -40,7 +41,7 @@ for __devboot_f in \
   $__devboot_bash/aliases.sh \
   $__devboot_bash/functions.sh \
   $__devboot_zsh/prompt.zsh \
-  $__devboot_bash/local.sh; do
+  $__devboot_zsh/local.zsh; do
   [[ -r $__devboot_f ]] && . "$__devboot_f"
 done
 . "$__devboot_bash/update-reminder.sh"

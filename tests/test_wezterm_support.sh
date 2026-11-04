@@ -66,9 +66,13 @@ cat >"$FAKEBIN/gh" <<'GH'
 #!/usr/bin/env bash
 echo "#compdef gh for ${*: -1}"
 GH
+# Like yargs, ng picks the completion template from $SHELL.
 cat >"$FAKEBIN/ng" <<'NG'
 #!/usr/bin/env bash
-echo "# ng completion script for zsh or bash"
+case ${SHELL:-} in
+  *zsh*) echo "compdef _ng_yargs_completions ng" ;;
+  *) echo "complete -o default -F _ng_yargs_completions ng" ;;
+esac
 NG
 chmod +x "$FAKEBIN/gh" "$FAKEBIN/ng"
 mkdir -p "$DEV/tools/cache/zsh"
@@ -76,14 +80,14 @@ touch "$DEV/tools/cache/zsh/zcompdump" "$DEV/tools/cache/zsh/zcompdump.zwc"
 out=$(devup --only completions)
 assert_contains "$out" "bash completions generated for " "bash completions are generated"
 assert_contains "$(cat "$DEV/tools/completions/completions/gh")" "for bash" "the gh completion is for bash"
-assert_true "ng completes for bash" test -f "$DEV/tools/completions/completions/ng"
+assert_contains "$(cat "$DEV/tools/completions/completions/ng")" "complete -o default" "ng completes for bash with the bash template"
 assert_true "no zsh completions without the opt-in" test ! -d "$DEV/tools/completions/zsh"
 assert_true "the completion dump is kept without the opt-in" test -f "$DEV/tools/cache/zsh/zcompdump"
 printf 'DEV_SHELL=zsh\n' >"$DEV/.local/profile.env"
 out=$(devup --only completions)
 assert_contains "$out" "zsh completions generated for " "zsh completions are generated when opted in"
 assert_contains "$(cat "$DEV/tools/completions/zsh/_gh")" "for zsh" "the gh completion is a zsh completion function"
-assert_true "ng is a script to source" test -f "$DEV/tools/completions/zsh/ng.zsh"
+assert_eq "$(cat "$DEV/tools/completions/zsh/ng.zsh")" "compdef _ng_yargs_completions ng" "ng is a script to source with the zsh template"
 assert_true "the completion dump is rebuilt after new completions" test ! -e "$DEV/tools/cache/zsh/zcompdump"
 
 finish

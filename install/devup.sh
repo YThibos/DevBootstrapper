@@ -576,7 +576,7 @@ generate_completions() {
   while IFS='|' read -r name command; do
     read -ra words <<<"${command//@SHELL@/$shell}"
     have "${words[0]}" || continue
-    if timeout 30 "${words[@]}" </dev/null >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    if SHELL=$shell timeout 30 "${words[@]}" </dev/null >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
       file=$prefix$name
       [[ $name == *.zsh ]] && file=$name
       cp "$tmp" "$dir/$file"

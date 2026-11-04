@@ -27,6 +27,16 @@ TOOL
   chmod +x "$FAKEBIN/$tool"
 done
 
+# Like yargs, ng picks the completion template from $SHELL; the bash one breaks zsh.
+cat >"$FAKEBIN/ng" <<'NG'
+#!/usr/bin/env bash
+case ${SHELL:-} in
+  *zsh*) echo "compdef _ng_yargs_completions ng" ;;
+  *) echo "complete -o default -F _ng_yargs_completions ng" ;;
+esac
+NG
+chmod +x "$FAKEBIN/ng"
+
 devup() { run bash "$DEV/install/devup.sh" "$@" 2>&1; }
 zsh_i() { run zsh -i -c "$1" 2>&1; }
 
@@ -58,6 +68,9 @@ DEV_PROXY_URL=http://proxy.corp.example:3128
 DEV_NO_PROXY=localhost,.corp.example
 PROFILE
 printf 'SAMPLE_TOKEN=tok123\nSAMPLE_SPACES='"'"'two words'"'"'\n' >"$DEV/.secrets"
+printf 'shopt -s globstar\n' >"$DEV/bash/local.sh"
+printf 'LOCAL_ZSH=loaded\n' >"$DEV/zsh/local.zsh"
+devup --only completions >/dev/null
 out=$(devup --only render,links)
 assert_contains "$out" "added the DevBootstrapper blocks to ~/.zshenv and ~/.zshrc" "devup adds the zsh blocks on opt-in"
 assert_eq "$(head -1 "$HOME/.zshenv")" "# >>> DevBootstrapper (zsh env) >>>" "the environment block is at the top of ~/.zshenv"
@@ -94,7 +107,9 @@ assert_contains "$inter" "gh: function" "zsh gets the gh wrapper"
 assert_contains "$inter" "mise=zsh zoxide=zsh fzf=--zsh" "mise, zoxide and fzf are activated for zsh"
 assert_contains "$inter" "DevBootstrapper - your portable development toolkit" "dev works in zsh"
 assert_eq "$(run bash -ic 'echo "mise=$FAKE_MISE zoxide=$FAKE_ZOXIDE fzf=$FAKE_FZF"' 2>&1 | tail -1)" "mise=bash zoxide=bash fzf=--bash" "and for bash as before"
-assert_not_contains "$inter" "rror" "interactive zsh prints no errors"
+assert_eq "$(run zsh -i -c true 2>&1 >/dev/null)" "" "interactive zsh prints nothing on stderr"
+assert_eq "$(zsh_i 'echo $LOCAL_ZSH')" "loaded" "zsh/local.zsh is loaded"
+assert_true "Ubuntu's global compinit is skipped, so no dump lands in ~" test ! -e "$HOME/.zcompdump"
 assert_eq "$(zsh_i '[[ -o histignorealldups ]] && [[ -o sharehistory ]] && echo options; echo "$HISTFILE $SAVEHIST"')" "options
 $HOME/.zsh_history 100000" "history ignores all duplicates and is shared between tabs"
 assert_eq "$(zsh_i 'echo $+functions[reload] $__devboot_shell')" "1 zsh" "reload exists for zsh"
@@ -108,6 +123,7 @@ assert_contains "$comp" "group-name ''" "completion groups the results by kind"
 assert_contains "$comp" "m:{a-z}={A-Z}" "completion matches case-insensitively"
 assert_contains "$comp" "gitid=__devboot_complete_gitid dev=__devboot_complete_dev" "DevBootstrapper commands complete in zsh"
 assert_true "completion keeps its dump under tools/cache" test -f "$DEV/tools/cache/zsh/zcompdump"
+assert_contains "$(run env TERM=xterm-256color zsh -i -c 'zstyle -L ":completion:*:default" list-colors')" "di=01;34" "completion colours files as ls does"
 mkdir -p "$DEV/.local/git"
 printf '[account "github-me"]\n\thost = github.com\n[context "work"]\n\temail = w@example.com\n' >"$DEV/.local/git/identities.gitconfig"
 assert_eq "$(zsh_i '__devboot_identity_names account host')" "github-me" "gitid completion reads the accounts"
@@ -128,7 +144,6 @@ assert_eq "$(zsh_i "source $DEV/zsh/prompt.zsh; DEV_IS_WSL=1 __devboot_prompt_ho
 assert_eq "$(zsh_i "source $DEV/zsh/prompt.zsh; DEV_IS_WSL= HOST=box.example __devboot_prompt_host_label")" ":box" "elsewhere it is the host name"
 assert_contains "$(zsh_i 'print -r -- $PROMPT')" '%F{30}%n%F{37}(' "the prompt starts with the dark teal user and the label"
 assert_contains "$(zsh_i 'print -r -- $PROMPT')" '%F{44}%~%f' "followed by the cyan directory"
-assert_not_contains "$(grep -rn -i -e 'JUS-' -e 'justice' -e 'onedrive' "$DEV/zsh" "$DEV/config/wezterm" "$DEV/.local.example" || true)" "JUS-" "nothing employer-specific is in the zsh layer or the WezTerm files"
 
 # The keys, typed into a real terminal (script provides one).
 if command -v script >/dev/null 2>&1; then

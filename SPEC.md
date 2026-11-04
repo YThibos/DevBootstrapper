@@ -196,7 +196,7 @@ The `dev` command is the toolkit's front door:
 ### 8.2 zsh, an opt-in
 
 bash is the default and stays unchanged.
-`DEV_SHELL=zsh` in `.local/profile.env`, asked in the first run, switches a machine to zsh; the captain asked for it to be an opt-in on every DevBootstrapper (JUSTMD-79).
+`DEV_SHELL=zsh` in `.local/profile.env`, asked in the first run, switches a machine to zsh.
 `env.sh` normalises the value, so anything but `zsh` means `bash`, and exports it as `DEV_SHELL`.
 
 With the opt-in, `devup` adds marked blocks, using `$ZDOTDIR` when set:
@@ -510,7 +510,7 @@ The remaining unknowns are the work-laptop investigation items in section 18; an
 - `tmp/` exists, is never committed and is never cleaned automatically.
 - `.secrets` lives at the dev home root and is never committed.
 - The bash setup is modular under `bash/`, entered only through `bootstrap.sh`.
-- zsh is an opt-in layer under `zsh/` (`DEV_SHELL=zsh`), on DevBootstrapper and on JustDevBootstrapper alike; bash stays the default, and without the opt-in `~/.zshrc` is never touched.
+- zsh is an opt-in layer under `zsh/` (`DEV_SHELL=zsh`); bash stays the default, and without the opt-in `~/.zshrc` is never touched.
 - The look and feel of the work laptop is the look and feel of every machine: the thibos prompt in zsh, tabs as tmux sessions in WezTerm, and EDI's face for EDI's sessions.
 - Shell setup and install/update are separate (`bootstrap.sh` versus `devup`).
 - Configurations are applied through environment variables or symlinks, with the full footprint listed in section 16.
