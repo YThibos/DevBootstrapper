@@ -5,7 +5,7 @@
 #: dev docs [topic] | read the documentation (dev docs lists the topics)
 #: dev ids | table of git accounts and contexts (same as gitid list)
 #: dev doctor | health report of tools, identities and network
-#: dev startup-time | measure interactive shell startup
+#: dev startup-time | measure interactive shell startup (bash, or zsh when opted in)
 set -euo pipefail
 
 # shellcheck source=lib/common.sh
@@ -43,7 +43,7 @@ cheat_section() {
     sed -E 's/^[[:space:]]*(#|--): //' |
     awk -F ' \\| ' '{ printf "  %-34s %s\n", $1, $2 }') || true
   [ -n "$out" ] || return 0
-  if [ -n "$FILTER" ]; then
+  if [ -n "$FILTER" ] && ! grep -qi -- "$FILTER" <<<"$title"; then
     out=$(printf '%s\n' "$out" | grep -i -- "$FILTER" || true)
     [ -n "$out" ] || return 0
   fi
@@ -60,6 +60,7 @@ cmd_cheat() {
   cheat_section 'Node and Angular' "$b/tools/node.sh"
   cheat_section 'Docker' "$b/tools/docker.sh"
   cheat_section 'Windows (WSL)' "$b/tools/wsl.sh"
+  cheat_section 'zsh keys (opt-in)' "$DEV_HOME/zsh/keybindings.zsh"
   cheat_section 'WezTerm keys' "$DEV_HOME/config/wezterm/wezterm.lua"
   cheat_section 'tmux keys' "$DEV_HOME/config/tmux/tmux.conf"
 }
@@ -97,14 +98,17 @@ cmd_docs() {
 }
 
 cmd_startup_time() {
-  local start end total=0 runs=5
+  local shell start end total=0 runs=5
+  load_env_file "$DEV_HOME/.local/profile.env"
+  shell=bash
+  [ "${DEV_SHELL:-}" != zsh ] || shell=zsh
   for _ in $(seq "$runs"); do
     start=$(date +%s%N)
-    DEVBOOT_NO_REMINDER=1 bash -i -c exit </dev/null >/dev/null 2>&1
+    DEVBOOT_NO_REMINDER=1 "$shell" -i -c exit </dev/null >/dev/null 2>&1
     end=$(date +%s%N)
     total=$((total + (end - start) / 1000000))
   done
-  echo "interactive shell startup: $((total / runs)) ms (average of $runs, budget 200 ms)"
+  echo "interactive $shell startup: $((total / runs)) ms (average of $runs, budget 200 ms)"
 }
 
 cmd_version() {

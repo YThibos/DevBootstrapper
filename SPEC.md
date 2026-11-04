@@ -73,8 +73,16 @@ In v1 the toolkit uses only `C:\development\tools\wezterm\` and `C:\development\
 │   ├── functions.sh
 │   ├── completions.sh
 │   ├── prompt.sh
-│   ├── tools/              # one small file per tool: history, mise, git, java, node, docker, fzf, zoxide, wsl
+│   ├── tools/              # one small file per tool: history, mise, git, java, node, docker, fzf, zoxide, wsl, wezterm
+│   ├── update-reminder.sh  # the one-line reminder, shared by both shells
 │   └── local.sh            # gitignored, per-machine shell overrides
+├── zsh/                    # the opt-in zsh layer (section 8.2)
+│   ├── bootstrap.zsh       # entry point: "bootstrap.zsh env" (~/.zshenv) or "bootstrap.zsh" (~/.zshrc)
+│   ├── history.zsh
+│   ├── keybindings.zsh
+│   ├── completion.zsh
+│   ├── prompt.zsh
+│   └── local.zsh           # gitignored, per-machine zsh overrides
 ├── bin/                    # dev, devup, gitid, use-version, mvnuse, jdkuse, git helpers
 │   └── wrappers/           # gh and glab wrappers that pick the account (section 10.1)
 ├── lib/                    # shared shell libraries: common, identity, links, render
@@ -88,7 +96,7 @@ In v1 the toolkit uses only `C:\development\tools\wezterm\` and `C:\development\
 │   ├── git/                # gitconfig and global ignore
 │   ├── maven/settings.xml  # template, rendered into .local/ (section 10)
 │   ├── npm/npmrc           # template, rendered into .local/
-│   ├── tmux/tmux.conf
+│   ├── tmux/tmux.conf      # template, rendered into .local/ (section 10)
 │   ├── starship.toml
 │   └── claude/             # settings.json and CLAUDE.md (section 14)
 ├── docs/                   # user documentation, read with dev docs
@@ -143,13 +151,13 @@ The installer:
 `devup --first-run` is interactive once.
 Its parts are numbered sections set apart by banners, every answer is checked and asked again when wrong, and nothing is written before the captain confirms a summary of the answers (git accounts and contexts each get save, edit or discard, then a review menu):
 
-1. Asks for the machine profile (`home` on the desktop PC, `work` on the work laptop) and writes `.local/profile.env`.
+1. Asks for the machine profile (`home` on the desktop PC, `work` on the work laptop) and the interactive shell (`bash`, or the `zsh` opt-in of section 8.2) and writes `.local/profile.env`.
 2. Runs `gitid` setup for the `home` and `work` contexts and at least one account, and sets this machine's default context from the profile.
    More accounts and contexts can be added later at any time (section 10.1).
 3. Detects the proxy from the environment WSL inherited from Windows, asks to confirm or enter it, and records it in `.local/profile.env`.
 4. Creates `.secrets` from `.secrets.example` with mode 600.
 5. Writes `/etc/wsl.conf` (`systemd=true`, `appendWindowsPath=false`) with `sudo`.
-6. Adds the two bootstrap blocks to `~/.bashrc` (section 8), then runs the normal update path (section 11).
+6. Adds the two bootstrap blocks to `~/.bashrc` (section 8), and the zsh blocks when zsh was chosen, then runs the normal update path (section 11).
 
 ## 8. Shell layer
 
@@ -179,11 +187,42 @@ Requirements:
 The `dev` command is the toolkit's front door:
 
 - `dev` prints an overview of the toolkit and its commands.
-- `dev cheat [filter]` prints a cheat sheet of commands, aliases, functions, WezTerm keys and tmux keys.
+- `dev cheat [filter]` prints a cheat sheet of commands, aliases, functions, zsh keys, WezTerm keys and tmux keys.
   Entries come from `#: usage | description` lines (`--:` in Lua) placed next to what they describe, so the sheet never drifts from the code.
 - `dev docs [topic]` lists the documentation topics in `docs/`, or renders one in the terminal (glow, else bat, else less); `dev docs spec` shows this spec.
 - `dev ids` prints the git account and context table (`gitid list`).
 - `dev doctor` prints the health report, and `dev startup-time` measures interactive shell startup.
+
+### 8.2 zsh, an opt-in
+
+bash is the default and stays unchanged.
+`DEV_SHELL=zsh` in `.local/profile.env`, asked in the first run, switches a machine to zsh.
+`env.sh` normalises the value, so anything but `zsh` means `bash`, and exports it as `DEV_SHELL`.
+
+With the opt-in, `devup` adds marked blocks, using `$ZDOTDIR` when set:
+
+1. At the top of `~/.zshenv`, `zsh/bootstrap.zsh env` loads the same `bash/env.sh` as bash does.
+   zsh reads `~/.zshenv` for every shell, so `zsh -lc` and a plain `zsh -c` get the same PATH, proxy, caches and `.secrets` as `bash -lc`.
+   A login zsh then reads `/etc/profile` and `~/.profile` in sh emulation, as a login bash does, so the directories they add (such as `~/.local/bin` and `/snap/bin`) are on both PATHs.
+   `env.sh` is written in the subset of bash and zsh, and finds its own location through `$0` where bash has `BASH_SOURCE`.
+2. At the bottom of `~/.zshrc`, `zsh/bootstrap.zsh` loads the interactive layer after the user's own settings.
+   It sources `history.zsh`, `keybindings.zsh` and `completion.zsh`, then the `bash/tools/*.sh` files, `aliases.sh` and `functions.sh` that both shells share (each asks `__devboot_shell` which shell it is for: `mise activate`, `fzf` and `zoxide` differ per shell), then `prompt.zsh`, and `zsh/local.zsh` last.
+
+Without the opt-in neither file is read, created or changed, byte for byte.
+Setting `DEV_SHELL` back to `bash` removes the blocks, and a file that held nothing else.
+`zsh` is an apt package installed only for the opt-in.
+tmux starts the chosen shell as a login shell (`default-command`).
+
+The zsh layer follows the work laptop's setup, without Oh My Zsh:
+
+- The prompt is `user(WSL2) ~/dir git:[branch*] $`, and `user(:host)` outside WSL, which `DEV_IS_WSL` decides.
+  The colours run from dark to light teal (256-colour 30, 37, 44 and 87).
+  The branch is green when clean, yellow with staged or unstaged changes and red with untracked files, found with `git diff-index --quiet` and a first-result untracked check, which stay fast on `/mnt/c`.
+- `Ctrl+Left` and `Ctrl+Right` jump a whitespace-delimited word, `Ctrl+Home` and `Ctrl+End` go to the start and end of the whole input, and `Ctrl+Up` and `Ctrl+Down` act as `Up` and `Down`, in the emacs and the vi insert keymaps.
+- Completion offers a menu to select from, matches case-insensitively, groups results by kind and completes the DevBootstrapper commands; `compinit` runs from a dump in `tools/cache/zsh/`, and `devup` generates the tools' zsh completions into `tools/completions/zsh/`.
+- History keeps 50000 lines in `~/.zsh_history`, ignores all duplicates and is shared between shells.
+
+Interactive zsh startup has the same 200 ms budget; `dev startup-time` measures the chosen shell.
 
 ## 9. Tool catalogue
 
@@ -235,9 +274,9 @@ The captain wants a quick command to switch the system-wide default version of a
 | Maven | `config/maven/settings.xml` (template) | Rendered by `devup` into `.local/maven/settings.xml` with the proxy, mirror and local repository (`tools/cache/m2`); `~/.m2/settings.xml` links to it; credentials stay `${env.*}` references |
 | npm | `config/npm/npmrc` (template) | Rendered into `.local/npm/npmrc` with the cache (`tools/cache/npm`) and registry; `~/.npmrc` links to it; the token stays a `${NPM_REGISTRY_TOKEN}` reference |
 | Caches | none | `~/.cache` links to `tools/cache`, so caches of programs started without the environment layer land there too |
-| tmux | `config/tmux/tmux.conf` | Symlink at `~/.tmux.conf` |
+| tmux | `config/tmux/tmux.conf` (template) | Rendered into `.local/tmux/tmux.conf` with the machine's shell as the login shell of every pane (`default-command`); `~/.tmux.conf` links to it |
 | starship | `config/starship.toml` | `STARSHIP_CONFIG` |
-| WezTerm | `config/wezterm/wezterm.lua` | Loaded by the Windows-side stub over `\\wsl.localhost\<distro>\...`, with a minimal built-in fallback when WSL is unreachable |
+| WezTerm | `config/wezterm/wezterm.lua` | Loaded by the Windows-side stub over `\\wsl.localhost\<distro>\...`, with a minimal built-in fallback when WSL is unreachable; the machine's backgrounds and EDI's face are in `.local/wezterm.lua` (section 10.2) |
 | Claude Code | `config/claude/settings.json`, `config/claude/CLAUDE.md` | Symlinks into `~/.claude/` (section 14) |
 
 `devup` owns every symlink.
@@ -292,6 +331,23 @@ HTTPS with tokens is the default authentication method, because corporate proxie
 Each account can choose SSH instead, and an SSH account may still have a token for its forge CLI.
 `gitid setup` is the guided first-run flow, and `clone <url> [context]` clones into `sources/<context>/` with that context's account.
 
+### 10.2 WezTerm: tabs as tmux sessions
+
+The key model is the work laptop's: a WezTerm tab is a tmux session, and splits and windows are tmux panes and windows.
+`Ctrl+t` prompts for a session name (letters, digits, `_` and `-`) and opens `tmux new-session -A -s <name>` in a new tab, and the first window opens the session `main`.
+Both start through a login shell, so tmux comes from the toolkit's PATH, and fall back to a plain shell without tmux.
+The other keys type tmux's prefix and a command into the focused pane, which runs the command in the tmux server (no nested client, no target to guess): split, move between panes with `h`, `j`, `k` and `l`, kill a pane, new, next and previous window, break a pane out, zoom and copy mode.
+`Alt+1` to `Alt+0` switch tabs, that is sessions.
+The launcher moved to `Alt+Shift+l`, as `Alt+l` moves between panes.
+Keys live in `config/wezterm/wezterm.lua` with `--:` cheat lines.
+
+EDI's face is a rule in `.local.example/wezterm.lua`, seeded into `.local/wezterm.lua` by the `links` step: while a pane's title is `edi-<yymmdd>-<hhmm>` it shows Fira Code, `#35aab6` text, a bright cyan cursor and a deep teal selection over a black underlay with the picture fitted whole.
+The picture is the first existing of `~/.edi/state/wallpaper.png` (EDI's wallpaper) and `docs/images/EDI-darkness.jpg` in the EDI checkout (`~/EDI`, configurable); with neither, the rule is skipped silently.
+The picture is chosen when WezTerm loads its configuration, so a file that appears later shows after a reload (`Ctrl+Shift+r`).
+The `links` step never edits an existing `.local/wezterm.lua`; it warns while that file still holds the earlier EDI rule, which looked for the picture in the Pictures folder.
+Linux paths reach WezTerm through the same `\\wsl.localhost` share as the dev home.
+The `fonts` step installs Fira Code (SIL Open Font License) from its GitHub release into `.local/fonts`.
+
 ## 11. Update model
 
 ### 11.1 WezTerm
@@ -315,16 +371,17 @@ Downloads use the Windows system proxy with default credentials.
 2. `windows`: syncs `windows/` assets to the Windows tools folder through `/mnt/c`.
 3. `certs`: adds the corporate root certificate to Ubuntu's trust store.
 4. `apt`: the apt proxy drop-in, the git-core PPA when it publishes for the installed release, base packages and `apt-get upgrade`, with the user typing the `sudo` password.
-5. `render`: renders the Maven and npm templates into `.local/`.
-6. `links`: ensures the symlinks from section 10 and the `~/.bashrc` blocks.
-7. `mise`: installs or self-updates mise into `tools/bin`, then `mise install`, `mise upgrade` within the version pins and `mise prune` of versions no longer referenced.
-8. `certs-java`: imports the corporate root certificate into every installed JDK.
-9. `identities`: regenerates the git identity config (`gitid sync`).
-10. `completions`: generates bash completions for the installed tools into `tools/completions/`.
-11. `doctor`: prints the health report: tool versions, Docker availability, GitHub reachability, links, identities and `.secrets` permissions.
+5. `render`: renders the Maven, npm and tmux templates into `.local/`.
+6. `fonts`: installs Fira Code into `.local/fonts` unless it is there.
+7. `links`: ensures the symlinks from section 10, the `~/.bashrc` blocks and, for the zsh opt-in, the zsh blocks.
+8. `mise`: installs or self-updates mise into `tools/bin`, then `mise install`, `mise upgrade` within the version pins and `mise prune` of versions no longer referenced.
+9. `certs-java`: imports the corporate root certificate into every installed JDK.
+10. `identities`: regenerates the git identity config (`gitid sync`).
+11. `completions`: generates bash completions for the installed tools into `tools/completions/`, and zsh completions into `tools/completions/zsh/` for the zsh opt-in.
+12. `doctor`: prints the health report: tool versions, Docker availability, GitHub reachability, links, identities and `.secrets` permissions.
 
 A complete, successful run writes the last-update stamp to `tools/state/last-update`.
-`devup --unlink` removes every link and the `~/.bashrc` blocks.
+`devup --unlink` removes every link and the `~/.bashrc` and zsh blocks.
 
 ### 11.3 Daily trigger
 
@@ -390,10 +447,10 @@ How the work proxy actually behaves (authentication, PAC file, TLS inspection) i
 
 Everything outside `~/development`, listed so it can be audited and removed:
 
-- WSL: two marked blocks in `~/.bashrc`; the symlinks from section 10 (including `~/.cache` and `~/.local/share/mise`); `/etc/wsl.conf`; the apt drop-ins for the proxy and the git PPA; the corporate certificate in the system trust store; and the apt packages.
+- WSL: two marked blocks in `~/.bashrc`, and two in `~/.zshenv` and `~/.zshrc` for the zsh opt-in; the symlinks from section 10 (including `~/.cache` and `~/.local/share/mise`); `/etc/wsl.conf`; the apt drop-ins for the proxy and the git PPA; the corporate certificate in the system trust store; and the apt packages.
 - Windows: `C:\development\tools\wezterm\` and `C:\development\tools\launcher\`, the Start-menu shortcut and, opt-in, `%USERPROFILE%\.wslconfig`.
 
-`docs/getting-started.md` documents uninstall: `devup --unlink` removes the symlinks and the `~/.bashrc` blocks, then delete `~/development`, and the Windows tools folders and shortcut.
+`docs/getting-started.md` documents uninstall: `devup --unlink` removes the symlinks and the `~/.bashrc` and zsh blocks, then delete `~/development`, and the Windows tools folders and shortcut.
 
 ## 17. Acceptance criteria
 
@@ -456,6 +513,8 @@ The remaining unknowns are the work-laptop investigation items in section 18; an
 - `tmp/` exists, is never committed and is never cleaned automatically.
 - `.secrets` lives at the dev home root and is never committed.
 - The bash setup is modular under `bash/`, entered only through `bootstrap.sh`.
+- zsh is an opt-in layer under `zsh/` (`DEV_SHELL=zsh`); bash stays the default, and without the opt-in `~/.zshrc` is never touched.
+- The look and feel of the work laptop is the look and feel of every machine: the thibos prompt in zsh, tabs as tmux sessions in WezTerm, and EDI's face for EDI's sessions.
 - Shell setup and install/update are separate (`bootstrap.sh` versus `devup`).
 - Configurations are applied through environment variables or symlinks, with the full footprint listed in section 16.
 - Project checkouts go in `~/development/sources/<context>/`, starting with `home` and `work`; the folder decides the git context, and everywhere else the machine's profile decides.
@@ -486,6 +545,9 @@ Verified by the automated tests (`tests/run.sh`), run in a sandboxed home on Ubu
 - Version switching: `mvnuse`, `jdkuse` and `use-version` write only the machine-local file and keep every version installed.
 - Shell and `devup`: the two `~/.bashrc` blocks, environment for `bash -lc`, interactive layer winning over Ubuntu's defaults, silent non-interactive shells, every link with adopt and backup behaviour, idempotent second runs, `--unlink`, template rendering with a work profile, the reminder, the 200 ms startup budget without optional tools, the allow-list `.gitignore` and the pull step.
 - The `devup` apt step ran for real against Ubuntu's package manager, including the fallback to Ubuntu's git when the git-core PPA is unreachable.
+- The zsh opt-in (`tests/test_zsh.sh`): `~/.zshrc` and `~/.zshenv` untouched without the opt-in, the blocks with it, the same environment as bash from `zsh -lc` and `zsh -c`, the tools, aliases and functions, the prompt colours, the keys typed into a real terminal, completion, history and the 200 ms budget.
+- The WezTerm configuration against a stand-in for the wezterm module (`tests/test_wezterm_config.sh`, with Lua 5.4): every key of the tmux model and its command, the tab prompt and its name check, and EDI's face with the wallpaper, the checkout picture and the configurable path.
+- The rendered tmux configuration, accepted by tmux itself, the Fira Code download and the generated zsh completions (`tests/test_wezterm_support.sh`).
 - All shell scripts pass shellcheck, and the Lua files compile.
 
 Verified by CI (`.github/workflows/ci.yml`) on a Windows runner: the launcher installs WezTerm nightly and places the stub, a second start the same day does not download again, and PSScriptAnalyzer reports no errors in `windows/`.

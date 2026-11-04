@@ -40,7 +40,7 @@ assert_contains "$(cat "$HOME/.bashrc")" 'alias ll='"'"'ls -alF'"'" "Ubuntu's ow
 
 for pair in ".gitconfig|config/git/gitconfig" ".config/mise/conf.d/devbootstrapper.toml|config/mise/config.toml" \
   ".config/mise/config.toml|.local/mise/config.toml" ".local/share/mise|tools/mise" ".cache|tools/cache" \
-  ".tmux.conf|config/tmux/tmux.conf" ".m2/settings.xml|.local/maven/settings.xml" ".npmrc|.local/npm/npmrc" \
+  ".tmux.conf|.local/tmux/tmux.conf" ".m2/settings.xml|.local/maven/settings.xml" ".npmrc|.local/npm/npmrc" \
   ".claude/settings.json|config/claude/settings.json" ".claude/CLAUDE.md|config/claude/CLAUDE.md"; do
   assert_eq "$(readlink "$HOME/${pair%%|*}")" "$DEV/${pair#*|}" "~/${pair%%|*} links to ${pair#*|}"
 done
@@ -106,10 +106,11 @@ assert_not_contains "$(cat "$xml")" "<proxies>" "the home profile renders no pro
 # dev: help, cheat sheet, docs.
 assert_contains "$(run "$DEV/bin/dev")" "dev cheat" "dev shows an overview"
 cheat=$(run "$DEV/bin/dev" cheat)
-for want in "gitid list" "mvnuse [version]" "jdkuse [version]" "clone <url> [context]" "Alt+l" "Ctrl-b d" "devup"; do
+for want in "gitid list" "mvnuse [version]" "jdkuse [version]" "clone <url> [context]" "Alt+h / j / k / l" "Ctrl+t" "Ctrl+Left / Ctrl+Right" "Ctrl-b d" "devup"; do
   assert_contains "$cheat" "$want" "dev cheat lists: $want"
 done
 assert_eq "$(run "$DEV/bin/dev" cheat maven | grep -c 'mvn')" "$(run "$DEV/bin/dev" cheat maven | grep -c '^  ')" "dev cheat <filter> narrows the sheet"
+assert_contains "$(run "$DEV/bin/dev" cheat zsh)" "Ctrl+Home" "a filter matching a section title keeps the whole section"
 assert_contains "$(run "$DEV/bin/dev" docs)" "getting-started" "dev docs lists the topics"
 assert_contains "$(run "$DEV/bin/dev" docs identities)" "gitid" "dev docs <topic> shows a topic"
 

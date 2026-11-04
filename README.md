@@ -2,6 +2,7 @@
 
 A portable, self-updating development toolkit: one repository that turns any Windows machine with WSL2 into the same Java, Maven, Angular and agent-tooling environment, at home and at work.
 After a one-command install everything happens inside WezTerm, and the toolkit keeps WezTerm and every tool up to date.
+Every WezTerm tab is a tmux session, bash is the default shell, and zsh with the themed prompt is an opt-in (`DEV_SHELL=zsh`).
 
 ## Install
 
@@ -33,6 +34,7 @@ See [docs/getting-started.md](docs/getting-started.md).
 ```
 ~/development/
 ├── bash/       shell setup, entered through bootstrap.sh
+├── zsh/        the opt-in zsh layer: prompt, keys, completion
 ├── bin/        dev, devup, gitid, use-version, mvnuse, jdkuse and git helpers
 ├── config/     tool configuration: mise manifest, git, Maven, npm, tmux, starship, WezTerm, Claude
 ├── docs/       documentation (dev docs)
@@ -49,11 +51,11 @@ See [docs/getting-started.md](docs/getting-started.md).
 ## Documentation
 
 - [Getting started](docs/getting-started.md) - install, first run, uninstall
-- [Shell](docs/shell.md) - how the bash setup loads and how to extend it
+- [Shell](docs/shell.md) - how the bash setup loads, the zsh opt-in, and how to extend it
 - [Tools and versions](docs/tools.md) - where each tool comes from, adding tools, switching versions
 - [Git identities](docs/identities.md) - several accounts per forge with gitid
 - [Updates](docs/updates.md) - devup, the daily update, WezTerm updates and rollback
 - [Network](docs/network.md) - work profile, corporate proxy, certificates, mirrors
 - [Secrets](docs/secrets.md) - the .secrets file
-- [WezTerm](docs/wezterm.md) - configuration and keys
+- [WezTerm](docs/wezterm.md) - tabs as tmux sessions, keys, backgrounds and EDI's face
 - [Specification](SPEC.md) - the agreed design

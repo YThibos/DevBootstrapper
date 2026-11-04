@@ -2,7 +2,7 @@
 # WezTerm integration: report the current directory (OSC 7) and mark ssh sessions (a user
 # variable), so the context-aware backgrounds in config/wezterm/wezterm.lua can follow the pane.
 # WezTerm cannot see processes inside WSL, so the shell tells it. Inside tmux each sequence is
-# wrapped for passthrough (allow-passthrough in config/tmux/tmux.conf).
+# wrapped for passthrough (allow-passthrough in config/tmux/tmux.conf). Shared by bash and zsh.
 
 __devboot_wezterm_send() {
   if [ -n "${TMUX:-}" ]; then
@@ -15,13 +15,13 @@ __devboot_wezterm_send() {
 # The directory as the path of a file:// URL: the ASCII characters that would end or change
 # the URL (space, %, #, ? and the like) are percent-encoded; other characters stay as they are.
 __devboot_wezterm_url_path() {
-  local path=$1 out='' c i
-  case $path in
+  local dir=$1 out='' c i
+  case $dir in
     *[\ %#?\"\<\>\\^\`\{\|\}]* | *[[:cntrl:]]*) ;;
-    *) printf '%s' "$path"; return ;;
+    *) printf '%s' "$dir"; return ;;
   esac
-  for ((i = 0; i < ${#path}; i++)); do
-    c=${path:i:1}
+  for ((i = 0; i < ${#dir}; i++)); do
+    c=${dir:i:1}
     case $c in
       [\ %#?\"\<\>\\^\`\{\|\}] | [[:cntrl:]]) printf -v c '%%%02X' "'$c" ;;
     esac
@@ -37,17 +37,22 @@ __devboot_wezterm_ssh_mark() {
 # At every prompt: the directory, and the end of any ssh mark. A prompt means no ssh runs in
 # the foreground, so this also clears a mark left by an ssh interrupted before it returned.
 __devboot_wezterm_osc7() {
-  __devboot_wezterm_send "$(printf '%s]7;file://%s%s%s' $'\e' "${HOSTNAME:-localhost}" "$(__devboot_wezterm_url_path "$PWD")" $'\e\\')"
+  __devboot_wezterm_send "$(printf '%s]7;file://%s%s%s' $'\e' "${HOSTNAME:-${HOST:-localhost}}" "$(__devboot_wezterm_url_path "$PWD")" $'\e\\')"
   if [ -n "${__devboot_wezterm_in_ssh:-}" ]; then
     __devboot_wezterm_ssh_mark ''
     __devboot_wezterm_in_ssh=
   fi
 }
 
-case ";${PROMPT_COMMAND:-};" in
-  *__devboot_wezterm_osc7*) ;;
-  *) PROMPT_COMMAND="__devboot_wezterm_osc7${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
-esac
+if [ -n "${ZSH_VERSION:-}" ]; then
+  autoload -Uz add-zsh-hook
+  add-zsh-hook precmd __devboot_wezterm_osc7
+else
+  case ";${PROMPT_COMMAND:-};" in
+    *__devboot_wezterm_osc7*) ;;
+    *) PROMPT_COMMAND="__devboot_wezterm_osc7${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
+  esac
+fi
 
 #: ssh | ssh, telling WezTerm the pane is remote while it runs
 ssh() {

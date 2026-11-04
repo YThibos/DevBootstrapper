@@ -90,7 +90,7 @@ else
 fi
 
 heading "Links"
-for pair in "$HOME/.gitconfig|$DEV_HOME/config/git/gitconfig" "$HOME/.config/mise/conf.d/devbootstrapper.toml|$DEV_HOME/config/mise/config.toml"; do
+for pair in "$HOME/.gitconfig|$DEV_HOME/config/git/gitconfig" "$HOME/.config/mise/conf.d/devbootstrapper.toml|$DEV_HOME/config/mise/config.toml" "$HOME/.tmux.conf|$DEV_HOME/.local/tmux/tmux.conf"; do
   link=${pair%%|*}
   target=${pair#*|}
   if [ "$(readlink "$link" 2>/dev/null)" = "$target" ]; then ok "${link/#$HOME/~}"; else warn "${link/#$HOME/~} is not linked (run devup)"; fi
@@ -99,6 +99,23 @@ if grep -qF '>>> DevBootstrapper (env) >>>' "$HOME/.bashrc" 2>/dev/null; then
   ok "the ~/.bashrc blocks are in place"
 else
   warn "$HOME/.bashrc has no DevBootstrapper blocks (run devup)"
+fi
+
+if [ "$DEV_SHELL" = zsh ]; then
+  zdir=${ZDOTDIR:-$HOME}
+  if grep -qF '>>> DevBootstrapper (zsh env) >>>' "$zdir/.zshenv" 2>/dev/null &&
+    grep -qF '>>> DevBootstrapper (zsh) >>>' "$zdir/.zshrc" 2>/dev/null; then
+    ok "the zsh blocks are in place"
+  else
+    warn "the zsh blocks are missing from $zdir/.zshenv or $zdir/.zshrc (run devup)"
+  fi
+fi
+
+heading "WezTerm"
+if [ -f "$DEV_HOME/.local/fonts/FiraCode-Regular.ttf" ]; then
+  ok "Fira Code is installed for EDI's face"
+else
+  warn "Fira Code is missing (run: devup --only fonts)"
 fi
 
 heading "Git identities"

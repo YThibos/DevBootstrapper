@@ -8,12 +8,13 @@
 #   windows      copy the launcher and WezTerm stub to the Windows tools folder (WSL only)
 #   certs        add the corporate root certificate to Ubuntu's trust store (work profile)
 #   apt          apt proxy, git PPA, base packages, upgrade
-#   render       render Maven and npm settings from templates into .local/
-#   links        link tool configs into place, and the ~/.bashrc blocks
+#   render       render Maven, npm and tmux settings from templates into .local/
+#   fonts        install Fira Code into .local/fonts for WezTerm
+#   links        link tool configs into place, and the ~/.bashrc blocks (zsh blocks when opted in)
 #   mise         install or update mise and every tool in the manifest, prune old versions
 #   certs-java   import the corporate root certificate into every installed JDK
 #   identities   regenerate the git identity config (gitid sync)
-#   completions  generate bash completions for installed tools
+#   completions  generate bash completions for installed tools (and zsh, when opted in)
 #   doctor       health report
 set -uo pipefail
 
@@ -24,7 +25,7 @@ set -uo pipefail
 # shellcheck source=lib/render.sh
 . "$DEV_HOME/lib/render.sh"
 
-STEPS=(pull windows certs apt render links mise certs-java identities completions doctor)
+STEPS=(pull windows certs apt render fonts links mise certs-java identities completions doctor)
 FIRST_RUN=0
 DAILY=0
 REEXECED=0
@@ -39,11 +40,12 @@ Usage: devup [--first-run] [--daily] [--skip a,b] [--only a,b] [--unlink]
 Steps, in order: ${STEPS[*]}
 
   --first-run   Interactive machine setup first: profile, proxy, certificate, .secrets,
-                /etc/wsl.conf, ~/.bashrc and git identities. Run once by the installer.
+                shell (bash or zsh), /etc/wsl.conf, ~/.bashrc and git identities.
+                Run once by the installer.
   --daily       The daily update started by WezTerm (same steps).
   --skip LIST   Skip steps, comma separated.
   --only LIST   Run only these steps, comma separated.
-  --unlink      Remove every link and the ~/.bashrc blocks DevBootstrapper created.
+  --unlink      Remove every link and the ~/.bashrc and zsh blocks DevBootstrapper created.
 EOF
 }
 
@@ -77,59 +79,121 @@ BASHRC_TOP_BEGIN='# >>> DevBootstrapper (env) >>>'
 BASHRC_TOP_END='# <<< DevBootstrapper (env) <<<'
 BASHRC_BOTTOM_BEGIN='# >>> DevBootstrapper >>>'
 BASHRC_BOTTOM_END='# <<< DevBootstrapper <<<'
+ZSHENV_BEGIN='# >>> DevBootstrapper (zsh env) >>>'
+ZSHENV_END='# <<< DevBootstrapper (zsh env) <<<'
+ZSHRC_BEGIN='# >>> DevBootstrapper (zsh) >>>'
+ZSHRC_END='# <<< DevBootstrapper (zsh) <<<'
+# Ends a BEGIN marker when devup had to end the user's last line first, so removal can undo it.
+ADDED_LINE_BREAK=' (devup ended the line above)'
 
+# bootstrap_ref SCRIPT - how a shell startup file refers to a bootstrap script of the dev home.
 bootstrap_ref() {
   if [ "$DEV_HOME" = "$HOME/development" ]; then
-    # Written literally so ~/.bashrc keeps working if the Linux user name changes.
-    # shellcheck disable=SC2016
-    printf '%s' '$HOME/development/bash/bootstrap.sh'
+    # Written literally so the startup file keeps working if the Linux user name changes.
+    printf '%s' "\$HOME/development/$1"
   else
-    printf '%s' "$DEV_HOME/bash/bootstrap.sh"
+    printf '%s' "$DEV_HOME/$1"
   fi
 }
 
-ensure_bashrc() {
-  local rc="$HOME/.bashrc" ref tmp changed=0
-  ref=$(bootstrap_ref)
+# add_rc_block FILE top|bottom BEGIN END COMMENT LINE - adds a marked block that sources the dev
+# home, unless FILE has it. Returns 0 when it added the block.
+add_rc_block() {
+  local rc=$1 where=$2 begin=$3 end=$4 comment=$5 line=$6 tmp
   touch "$rc"
-  if ! grep -qF "$BASHRC_TOP_BEGIN" "$rc"; then
+  ! grep -qF "$begin" "$rc" || return 1
+  if [ "$where" = top ]; then
     tmp=$(mktemp)
-    {
-      echo "$BASHRC_TOP_BEGIN"
-      echo "# Environment for every shell, also non-interactive ones (docs/shell.md)."
-      echo "[ -f \"$ref\" ] && . \"$ref\" env"
-      echo "$BASHRC_TOP_END"
-      cat "$rc"
-    } >"$tmp"
+    { printf '%s\n%s\n%s\n%s\n' "$begin" "$comment" "$line" "$end"; cat "$rc"; } >"$tmp"
     cat "$tmp" >"$rc"
     rm -f "$tmp"
-    changed=1
+  else
+    if [ -n "$(tail -c1 "$rc")" ]; then
+      echo >>"$rc"
+      begin+=$ADDED_LINE_BREAK
+    fi
+    printf '%s\n%s\n%s\n%s\n' "$begin" "$comment" "$line" "$end" >>"$rc"
   fi
-  if ! grep -qF "$BASHRC_BOTTOM_BEGIN" "$rc"; then
-    {
-      echo "$BASHRC_BOTTOM_BEGIN"
-      echo "# Interactive setup: aliases, functions, completions, prompt (docs/shell.md)."
-      echo "[ -f \"$ref\" ] && . \"$ref\""
-      echo "$BASHRC_BOTTOM_END"
-    } >>"$rc"
-    changed=1
-  fi
-  [ "$changed" -eq 1 ] && info "added the DevBootstrapper blocks to ~/.bashrc"
+}
+
+# remove_rc_block FILE BEGIN END - removes a marked block, and the line break devup added before
+# it when nothing follows the block. Returns 0 when FILE had it, and leaves a FILE without it
+# untouched.
+remove_rc_block() {
+  local rc=$1 begin=$2 end=$3 tmp
+  grep -qsF "$begin" "$rc" || return 1
+  tmp=$(mktemp)
+  awk -v b="$begin" -v j="$begin$ADDED_LINE_BREAK" -v e="$end" '
+    $0 == b || $0 == j { skip = 1; unbreak = ($0 == j); next }
+    $0 == e { skip = 0; next }
+    skip { next }
+    { if (n++) print last; last = $0; unbreak = 0 }
+    END { if (n) printf "%s%s", last, (unbreak ? "" : "\n") }
+  ' "$rc" >"$tmp"
+  cat "$tmp" >"$rc"
+  rm -f "$tmp"
+}
+
+ensure_bashrc() {
+  local rc="$HOME/.bashrc" ref changed=0
+  ref=$(bootstrap_ref bash/bootstrap.sh)
+  add_rc_block "$rc" top "$BASHRC_TOP_BEGIN" "$BASHRC_TOP_END" \
+    "# Environment for every shell, also non-interactive ones (docs/shell.md)." \
+    "[ -f \"$ref\" ] && . \"$ref\" env" && changed=1
+  add_rc_block "$rc" bottom "$BASHRC_BOTTOM_BEGIN" "$BASHRC_BOTTOM_END" \
+    "# Interactive setup: aliases, functions, completions, prompt (docs/shell.md)." \
+    "[ -f \"$ref\" ] && . \"$ref\"" && changed=1
+  [ "$changed" -eq 0 ] || info "added the DevBootstrapper blocks to ~/.bashrc"
   return 0
 }
 
 remove_bashrc_blocks() {
-  local rc="$HOME/.bashrc" tmp
-  [ -f "$rc" ] || return 0
-  tmp=$(mktemp)
-  awk -v b1="$BASHRC_TOP_BEGIN" -v e1="$BASHRC_TOP_END" -v b2="$BASHRC_BOTTOM_BEGIN" -v e2="$BASHRC_BOTTOM_END" '
-    $0 == b1 || $0 == b2 { skip = 1; next }
-    $0 == e1 || $0 == e2 { skip = 0; next }
-    !skip { print }
-  ' "$rc" >"$tmp"
-  cat "$tmp" >"$rc"
-  rm -f "$tmp"
-  info "removed the DevBootstrapper blocks from ~/.bashrc"
+  local rc="$HOME/.bashrc" removed=0
+  remove_rc_block "$rc" "$BASHRC_TOP_BEGIN" "$BASHRC_TOP_END" && removed=1
+  remove_rc_block "$rc" "$BASHRC_BOTTOM_BEGIN" "$BASHRC_BOTTOM_END" && removed=1
+  [ "$removed" -eq 0 ] || info "removed the DevBootstrapper blocks from ~/.bashrc"
+  return 0
+}
+
+# zsh is an opt-in layer (docs/shell.md): its blocks exist only while .local/profile.env says
+# DEV_SHELL=zsh, and without them ~/.zshenv and ~/.zshrc are never touched.
+zsh_opted_in() { [ "$DEV_SHELL" = zsh ]; }
+
+zsh_dir() { printf '%s' "${ZDOTDIR:-$HOME}"; }
+
+ensure_zsh_blocks() {
+  local dir ref changed=0
+  dir=$(zsh_dir)
+  ref=$(bootstrap_ref zsh/bootstrap.zsh)
+  add_rc_block "$dir/.zshenv" top "$ZSHENV_BEGIN" "$ZSHENV_END" \
+    "# Environment for every zsh, also non-interactive ones (docs/shell.md)." \
+    "[ -f \"$ref\" ] && . \"$ref\" env" && changed=1
+  add_rc_block "$dir/.zshrc" bottom "$ZSHRC_BEGIN" "$ZSHRC_END" \
+    "# Interactive setup: prompt, keys, completion, aliases, functions (docs/shell.md)." \
+    "[ -f \"$ref\" ] && . \"$ref\"" && changed=1
+  [ "$changed" -eq 0 ] || info "added the DevBootstrapper blocks to ~/.zshenv and ~/.zshrc"
+  return 0
+}
+
+# remove_zsh_block FILE BEGIN END - removes a marked block, and FILE too when nothing else is in
+# it, as then devup created it. Returns 0 when FILE had the block.
+remove_zsh_block() {
+  local rc=$1
+  remove_rc_block "$@" || return 1
+  [ -s "$rc" ] || rm -f "$rc"
+}
+
+remove_zsh_blocks() {
+  local dir removed=0
+  dir=$(zsh_dir)
+  remove_zsh_block "$dir/.zshenv" "$ZSHENV_BEGIN" "$ZSHENV_END" && removed=1
+  remove_zsh_block "$dir/.zshrc" "$ZSHRC_BEGIN" "$ZSHRC_END" && removed=1
+  [ "$removed" -eq 0 ] || info "removed the DevBootstrapper blocks from ~/.zshenv and ~/.zshrc"
+  return 0
+}
+
+sync_zsh_blocks() {
+  if zsh_opted_in; then ensure_zsh_blocks; else remove_zsh_blocks; fi
 }
 
 # ini_set FILE SECTION KEY VALUE - prints FILE with key=value set inside [section].
@@ -230,6 +294,15 @@ ask_machine_settings() {
   ok "machine profile saved in .local/profile.env"
 }
 
+# Asks which interactive shell this machine uses; the answer is DEV_SHELL in .local/profile.env.
+ask_shell() {
+  local profile_file=$1 shell=${DEV_SHELL:-bash}
+  ask_choice shell "Interactive shell (bash or zsh)" "$shell" bash zsh
+  set_env_value "$profile_file" DEV_SHELL "$shell"
+  DEV_SHELL=$shell
+  ok "interactive shell: $shell"
+}
+
 first_run() {
   is_tty || die "devup --first-run is interactive; run it in a terminal"
   local profile_file="$DEV_HOME/.local/profile.env"
@@ -241,7 +314,9 @@ first_run() {
   ask_machine_settings "$profile_file"
 
   banner "3/$FIRST_RUN_SECTIONS  Shell and WSL" \
-    ".secrets for your tokens, /etc/wsl.conf (asks for your sudo password) and two blocks in ~/.bashrc."
+    ".secrets for your tokens, /etc/wsl.conf (asks for your sudo password) and two blocks in ~/.bashrc." \
+    "bash is the default shell; zsh is an opt-in with the same tools and a themed prompt (docs/shell.md)."
+  ask_shell "$profile_file"
   if [ ! -f "$DEV_HOME/.secrets" ]; then
     cp "$DEV_HOME/.secrets.example" "$DEV_HOME/.secrets"
     ok "created .secrets from .secrets.example"
@@ -249,6 +324,7 @@ first_run() {
   chmod 600 "$DEV_HOME/.secrets"
   ensure_wsl_conf
   ensure_bashrc
+  sync_zsh_blocks
 
   # Reload the environment with the new profile before identities and tools.
   . "$DEV_HOME/bash/env.sh"
@@ -380,7 +456,9 @@ step_render() {
   [ "$r" = changed ] && info "rendered .local/maven/settings.xml"
   r=$(render_template "$DEV_HOME/config/npm/npmrc" "$DEV_HOME/.local/npm/npmrc") || return 1
   [ "$r" = changed ] && info "rendered .local/npm/npmrc"
-  ok "Maven and npm settings rendered"
+  r=$(render_template "$DEV_HOME/config/tmux/tmux.conf" "$DEV_HOME/.local/tmux/tmux.conf") || return 1
+  [ "$r" = changed ] && info "rendered .local/tmux/tmux.conf"
+  ok "Maven, npm and tmux settings rendered"
 }
 
 # Every link devup manages: SOURCE|LINK|MODE
@@ -391,12 +469,35 @@ $DEV_HOME/config/mise/config.toml|$HOME/.config/mise/conf.d/devbootstrapper.toml
 $DEV_HOME/.local/mise/config.toml|$HOME/.config/mise/config.toml|adopt
 $DEV_TOOLS/mise|$HOME/.local/share/mise|replace
 $DEV_TOOLS/cache|$HOME/.cache|replace
-$DEV_HOME/config/tmux/tmux.conf|$HOME/.tmux.conf|replace
+$DEV_HOME/.local/tmux/tmux.conf|$HOME/.tmux.conf|replace
 $DEV_HOME/.local/maven/settings.xml|$HOME/.m2/settings.xml|replace
 $DEV_HOME/.local/npm/npmrc|$HOME/.npmrc|replace
 $DEV_HOME/config/claude/settings.json|$HOME/.claude/settings.json|adopt
 $DEV_HOME/config/claude/CLAUDE.md|$HOME/.claude/CLAUDE.md|adopt
 EOF
+}
+
+FIRA_CODE_VERSION=6.2
+FIRA_CODE_URL="https://github.com/tonsky/FiraCode/releases/download/$FIRA_CODE_VERSION/Fira_Code_v$FIRA_CODE_VERSION.zip"
+
+# Fira Code (SIL Open Font License) is the font of EDI's face in WezTerm; WezTerm finds it in
+# .local/fonts without installing it in Windows (docs/wezterm.md).
+step_fonts() {
+  local dir="$DEV_HOME/.local/fonts" tmp
+  if [ -f "$dir/FiraCode-Regular.ttf" ]; then
+    ok "Fira Code is installed"
+    return 0
+  fi
+  have unzip || { err "unzip is missing; run devup --only apt"; return 1; }
+  tmp=$(mktemp -d)
+  mkdir -p "$dir"
+  if ! { curl -fsSL "$FIRA_CODE_URL" -o "$tmp/fira-code.zip" && unzip -qoj "$tmp/fira-code.zip" 'ttf/*.ttf' -d "$dir"; }; then
+    rm -rf "$tmp"
+    err "could not install Fira Code from $FIRA_CODE_URL"
+    return 1
+  fi
+  rm -rf "$tmp"
+  ok "installed Fira Code $FIRA_CODE_VERSION into .local/fonts"
 }
 
 step_links() {
@@ -406,17 +507,27 @@ step_links() {
     printf '%s\n%s\n' '# Machine-local tool defaults, written by use-version (docs/tools.md). Not shared.' '[tools]' \
       >"$DEV_HOME/.local/mise/config.toml"
   fi
-  if [ ! -f "$DEV_HOME/.local/wezterm.lua" ]; then
-    cp "$DEV_HOME/.local.example/wezterm.lua" "$DEV_HOME/.local/wezterm.lua"
-    info "created .local/wezterm.lua from .local.example (WezTerm backgrounds)"
-  fi
+  seed_local_wezterm
   local src link mode r count=0
   while IFS='|' read -r src link mode; do
     r=$(ensure_link "$src" "$link" "$mode") || return 1
     [ "$r" = changed ] && { info "linked ${link/#$HOME/~}"; count=$((count + 1)); }
   done < <(link_table)
   ensure_bashrc
+  sync_zsh_blocks
   ok "links in place ($count changed)"
+}
+
+# .local/wezterm.lua is the user's own once created, so an EDI rule from before EDI's face moved
+# to the EDI checkout gets a hint rather than an edit.
+seed_local_wezterm() {
+  local settings="$DEV_HOME/.local/wezterm.lua"
+  if [ ! -f "$settings" ]; then
+    cp "$DEV_HOME/.local.example/wezterm.lua" "$settings"
+    info "created .local/wezterm.lua from .local.example (WezTerm backgrounds)"
+  elif grep -q "'edi-darkness.jpg'" "$settings"; then
+    warn "EDI's face in .local/wezterm.lua still uses the Pictures folder; copy the EDI rule from .local.example/wezterm.lua (docs/wezterm.md)"
+  fi
 }
 
 step_mise() {
@@ -464,35 +575,63 @@ step_identities() {
 }
 
 step_completions() {
-  local dir="$DEV_TOOLS/completions/completions" tmp n=0
+  local bash_count zsh_count
+  bash_count=$(generate_completions bash "$DEV_TOOLS/completions/completions" '' completion_commands)
+  ok "bash completions generated for $bash_count tools"
+  zsh_opted_in || return 0
+  zsh_count=$(generate_completions zsh "$DEV_TOOLS/completions/zsh" _ zsh_completion_commands)
+  rm -f "$DEV_TOOLS"/cache/zsh/zcompdump*
+  ok "zsh completions generated for $zsh_count tools"
+}
+
+# generate_completions SHELL DIR PREFIX TABLE - writes the completion of every installed tool in
+# TABLE to DIR/PREFIX<name> (a name ending in .zsh is a script to source and takes no prefix),
+# keeping the previous file when a tool fails. Prints the count.
+# Some tools, ng among them, write the completion for the shell in $SHELL, which is the login
+# shell and not the one the file is for; so SHELL is set for each tool.
+generate_completions() {
+  local shell=$1 dir=$2 prefix=$3 table=$4 name command words file tmp n=0
   mkdir -p "$dir"
   tmp=$(mktemp)
-  gen() {
-    local name=$1
-    shift
-    have "$1" || return 0
-    if timeout 30 "$@" </dev/null >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
-      cp "$tmp" "$dir/$name"
+  while IFS='|' read -r name command; do
+    read -ra words <<<"${command//@SHELL@/$shell}"
+    have "${words[0]}" || continue
+    if SHELL=$shell timeout 30 "${words[@]}" </dev/null >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+      file=$prefix$name
+      [[ $name == *.zsh ]] && file=$name
+      cp "$tmp" "$dir/$file"
       n=$((n + 1))
     fi
-  }
-  gen gh gh completion -s bash
-  gen glab glab completion -s bash
-  gen mise mise completion bash
-  gen uv uv generate-shell-completion bash
-  gen rg rg --generate complete-bash
-  gen fd fd --gen-completions bash
-  gen bat bat --completion bash
-  gen delta delta --generate-completion bash
-  gen xh xh --generate complete-bash
-  gen glow glow completion bash
-  gen yq yq shell-completion bash
-  gen starship starship completions bash
-  gen docker docker completion bash
-  gen npm npm completion
-  gen ng ng completion script
+  done < <("$table")
   rm -f "$tmp"
-  ok "bash completions generated for $n tools"
+  echo "$n"
+}
+
+# NAME|COMMAND, one tool per line; @SHELL@ stands for the shell the completion is for.
+completion_commands() {
+  cat <<'LIST'
+gh|gh completion -s @SHELL@
+glab|glab completion -s @SHELL@
+mise|mise completion @SHELL@
+uv|uv generate-shell-completion @SHELL@
+rg|rg --generate complete-@SHELL@
+fd|fd --gen-completions @SHELL@
+bat|bat --completion @SHELL@
+delta|delta --generate-completion @SHELL@
+xh|xh --generate complete-@SHELL@
+glow|glow completion @SHELL@
+yq|yq shell-completion @SHELL@
+starship|starship completions @SHELL@
+docker|docker completion @SHELL@
+npm|npm completion
+ng|ng completion script
+LIST
+}
+
+# zsh takes the same tools as completion functions (_name), except npm and ng, whose scripts
+# are sourced.
+zsh_completion_commands() {
+  completion_commands | sed -E 's/^(npm|ng)\|/\1.zsh|/'
 }
 
 step_doctor() {
@@ -504,6 +643,7 @@ step_doctor() {
 if [ "$UNLINK" -eq 1 ]; then
   while IFS='|' read -r _src link _mode; do remove_link "$link"; done < <(link_table)
   remove_bashrc_blocks
+  remove_zsh_blocks
   info "DevBootstrapper links removed. To remove everything, also delete $DEV_HOME and, on Windows, C:\\development\\tools and the Start-menu shortcut."
   exit 0
 fi

@@ -5,6 +5,7 @@
 [ -n "${BASH_VERSION:-}" ] || return 0
 
 __devboot_bash="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+__devboot_shell=bash
 
 # The environment layer loads once per shell process.
 if [ "${__devboot_env_loaded:-}" != "$$" ]; then
@@ -45,13 +46,6 @@ for __devboot_f in \
   # shellcheck disable=SC1090
   [ -r "$__devboot_bash/$__devboot_f" ] && . "$__devboot_bash/$__devboot_f"
 done
+# shellcheck source=bash/update-reminder.sh
+. "$__devboot_bash/update-reminder.sh"
 unset __devboot_f __devboot_bash
-
-# Reminder for terminals other than WezTerm, which runs the daily update itself.
-if [ "${TERM_PROGRAM:-}" != WezTerm ] && [ -z "${DEVBOOT_NO_REMINDER:-}" ]; then
-  if [ ! -r "$DEV_TOOLS/state/last-update" ] || [ "$(cat "$DEV_TOOLS/state/last-update")" != "$(date +%Y-%m-%d)" ]; then
-    printf 'DevBootstrapper: no update today yet - run devup (last: %s)\n' \
-      "$(cat "$DEV_TOOLS/state/last-update" 2>/dev/null || echo never)"
-  fi
-fi
-true
