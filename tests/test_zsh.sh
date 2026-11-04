@@ -193,4 +193,13 @@ devup --only links >/dev/null
 devup --unlink >/dev/null
 assert_true "--unlink removes the zsh blocks" cmp -s "$HOME/.zshrc" "$SANDBOX/zshrc.orig"
 
+# A ~/.zshrc whose last line has no newline, as some editors save it.
+printf 'alias mine=true' >"$HOME/.zshrc"
+devup --only links >/dev/null
+assert_eq "$(zsh_i 'alias mine; echo $+functions[reload]')" "mine=true
+1" "the block goes on its own line after a last line without a newline"
+printf 'DEV_SHELL=bash\n' >"$DEV/.local/profile.env"
+devup --only links >/dev/null
+assert_eq "$(od -c "$HOME/.zshrc")" "$(printf 'alias mine=true\n' | od -c)" "opting out keeps the user's line, now ending in a newline"
+
 finish

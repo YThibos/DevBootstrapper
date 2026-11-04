@@ -16,7 +16,7 @@ __devboot_prompt_host_label() {
 # seconds there. git diff-index --quiet answers "staged or unstaged changes?" by exit code and
 # stops at the first changed file; the untracked check stops at the first result.
 __devboot_prompt_git() {
-  local GIT_OPTIONAL_LOCKS=0
+  local -x GIT_OPTIONAL_LOCKS=0
   local branch color=green dirty=''
   branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || return
   [[ $branch == HEAD ]] && branch='(detached)'

@@ -106,6 +106,7 @@ add_rc_block() {
     cat "$tmp" >"$rc"
     rm -f "$tmp"
   else
+    [ -z "$(tail -c1 "$rc")" ] || echo >>"$rc"
     printf '%s\n%s\n%s\n%s\n' "$begin" "$comment" "$line" "$end" >>"$rc"
   fi
 }
