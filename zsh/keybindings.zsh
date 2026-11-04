@@ -23,7 +23,8 @@ __devboot_end_of_buffer() { CURSOR=${#BUFFER} }
 zle -N beginning-of-buffer __devboot_beginning_of_buffer
 zle -N end-of-buffer __devboot_end_of_buffer
 
-# Bound in the emacs and the vi insert keymaps, so it works whichever editing mode a ~/.zshrc picks.
+# Also bound in the vi insert keymap, for a vi mode picked in zsh/local.zsh (bindkey -e above
+# overrides one picked earlier in ~/.zshrc).
 () {
   local keymap
   for keymap in emacs viins; do

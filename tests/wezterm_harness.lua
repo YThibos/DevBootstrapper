@@ -1,7 +1,7 @@
 -- Loads config/wezterm/wezterm.lua against a stand-in for the wezterm module, so the key table,
 -- the tab prompt and the background rules can be checked without WezTerm (tests/test_wezterm_config.sh).
 -- Usage: lua5.4 wezterm_harness.lua REPO HOME MODE [ARGUMENT]
---   keys            one line per key: MODS+KEY ACTION ARGUMENT
+--   keys            one line per key: MODS+KEY ACTION ARGUMENT, or for a callback key what it does in order
 --   face TITLE      the image, font and text colour WezTerm switches to for a pane with that title
 --   prompt NAME     the tab that answering the Ctrl+t prompt with NAME opens, or "ignored"
 --   startup         the command of the window WezTerm opens at start
@@ -14,6 +14,7 @@ dofile = function(path) return real_dofile((path:gsub('\\', '/'))) end
 
 local handlers = {}
 local spawned = {}
+local steps = {}
 local fake = {
   home_dir = '/no/windows/home',
   config_builder = function() return {} end,
@@ -21,6 +22,7 @@ local fake = {
   font_with_fallback = function(families) return { families = families } end,
   action_callback = function(callback) return { action = 'Callback', callback = callback } end,
   on = function(event, handler) handlers[event] = handler end,
+  sleep_ms = function(ms) steps[#steps + 1] = 'pause ' .. ms .. 'ms' end,
   mux = {
     spawn_window = function(command)
       spawned.command = command
@@ -47,10 +49,21 @@ end
 local machine = { distro = 'Ubuntu', dev_home = home .. '/development', dev_home_unc = home .. '/development' }
 local config = real_dofile(repo .. '/config/wezterm/wezterm.lua').build(machine)
 
+-- What a callback key does, in order: the actions it performs and the pauses between them.
+local function performed(callback)
+  steps = {}
+  local window = {
+    perform_action = function(_, action) steps[#steps + 1] = action.action .. ' ' .. show(action.arg) end,
+  }
+  callback(window, {})
+  return table.concat(steps, ' | ')
+end
+
 if mode == 'keys' then
   for _, key in ipairs(config.keys) do
     local action = key.action
-    print(string.format('%s+%s %s %s', key.mods, key.key, action.action, show(action.arg)))
+    local shown = action.action == 'Callback' and performed(action.callback) or action.action .. ' ' .. show(action.arg)
+    print(string.format('%s+%s %s', key.mods, key.key, shown))
   end
 elseif mode == 'face' then
   local handler = handlers['update-status']
@@ -81,6 +94,7 @@ elseif mode == 'prompt' then
     if key.key == 't' and key.mods == 'CTRL' then
       local window = {
         perform_action = function(_, action)
+          spawned[#spawned + 1] = action
           print(string.format('%s domain=%s %s', action.action, action.arg.domain.DomainName, show(action.arg.args)))
         end,
       }

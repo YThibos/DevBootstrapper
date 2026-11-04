@@ -19,7 +19,7 @@ caret_b=$'\x02'
 
 keys=$(harness keys | sed "s/$caret_b/^B/g; s/$(printf '\r')/^M/g")
 while IFS='@' read -r key command; do
-  assert_contains "$keys" "$key SendString ^B:$command^M" "$key sends the tmux command: $command"
+  assert_contains "$keys" "$key SendString ^B: | pause 50ms | SendString $command^M" "$key opens tmux's command prompt, then sends: $command"
 done <<'TABLE'
 ALT+Enter@split-window -h
 ALT|SHIFT+Enter@split-window -v
@@ -43,6 +43,7 @@ assert_eq "$(printf '%s\n' "$keys" | awk '{ print $1 }' | sort | uniq -d)" "" "n
 assert_contains "$keys" "ALT|SHIFT+L ShowLauncher" "the launcher moved to Alt+Shift+l, as Alt+l moves between panes"
 
 assert_contains "$(harness prompt work)" "domain=WSL:Ubuntu bash -lc command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s work;" "a name opens that tmux session in a new tab"
+assert_not_contains "$(harness prompt work)" ignored "and is not reported as ignored"
 assert_eq "$(harness prompt 'a b')" ignored "a name with a space is ignored"
 assert_eq "$(harness prompt 'x;reboot')" ignored "a name that could inject a command is ignored"
 assert_eq "$(harness prompt a.b)" ignored "a name tmux would reject is ignored"

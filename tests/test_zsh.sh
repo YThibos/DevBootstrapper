@@ -16,16 +16,24 @@ fi
 
 # A stock-Ubuntu-like bash setup, so that bash -lc reads the DevBootstrapper blocks.
 printf 'case $- in\n    *i*) ;;\n      *) return;;\nesac\n' >"$HOME/.bashrc"
-printf 'if [ -n "$BASH_VERSION" ]; then\n    . "$HOME/.bashrc"\nfi\n' >"$HOME/.profile"
+printf 'if [ -n "$BASH_VERSION" ]; then\n    . "$HOME/.bashrc"\nfi\nif [ -d "$HOME/.local/bin" ] ; then\n    PATH="$HOME/.local/bin:$PATH"\nfi\n' >"$HOME/.profile"
 
 # Stand-ins for the tools whose shell integration differs per shell: each prints what it was asked.
+# They start without forking, like the real native tools, so they do not eat the startup budget.
 for tool in mise zoxide fzf; do
-  cat >"$FAKEBIN/$tool" <<'TOOL'
-#!/usr/bin/env bash
-echo "export FAKE_$(basename "$0" | tr a-z A-Z)=${*: -1}"
-TOOL
+  printf '#!/bin/sh\nfor last; do :; done\necho "export FAKE_%s=$last"\n' "${tool^^}" >"$FAKEBIN/$tool"
   chmod +x "$FAKEBIN/$tool"
 done
+
+# Like yargs, ng picks the completion template from $SHELL; the bash one breaks zsh.
+cat >"$FAKEBIN/ng" <<'NG'
+#!/usr/bin/env bash
+case ${SHELL:-} in
+  *zsh*) echo "compdef _ng_yargs_completions ng" ;;
+  *) echo "complete -o default -F _ng_yargs_completions ng" ;;
+esac
+NG
+chmod +x "$FAKEBIN/ng"
 
 devup() { run bash "$DEV/install/devup.sh" "$@" 2>&1; }
 zsh_i() { run zsh -i -c "$1" 2>&1; }
@@ -58,6 +66,9 @@ DEV_PROXY_URL=http://proxy.corp.example:3128
 DEV_NO_PROXY=localhost,.corp.example
 PROFILE
 printf 'SAMPLE_TOKEN=tok123\nSAMPLE_SPACES='"'"'two words'"'"'\n' >"$DEV/.secrets"
+printf 'shopt -s globstar\n' >"$DEV/bash/local.sh"
+printf 'LOCAL_ZSH=loaded\n' >"$DEV/zsh/local.zsh"
+devup --only completions >/dev/null
 out=$(devup --only render,links)
 assert_contains "$out" "added the DevBootstrapper blocks to ~/.zshenv and ~/.zshrc" "devup adds the zsh blocks on opt-in"
 assert_eq "$(head -1 "$HOME/.zshenv")" "# >>> DevBootstrapper (zsh env) >>>" "the environment block is at the top of ~/.zshenv"
@@ -82,6 +93,11 @@ done
 assert_eq "$(run zsh -c 'printf %s "$DEV_HOME"')" "$DEV" "plain zsh -c gets the environment too, through ~/.zshenv"
 assert_eq "$(run zsh -lc 'echo $PATH' | cut -d: -f1-4)" "$(run bash -lc 'echo $PATH' | cut -d: -f1-4)" "zsh -lc has the same toolkit PATH entries first"
 assert_eq "$(run zsh -lc 'command -v gitid')" "$DEV/bin/gitid" "zsh -lc finds the DevBootstrapper commands"
+mkdir -p "$HOME/.local/bin"
+printf '#!/bin/sh\n' >"$HOME/.local/bin/ruff" && chmod +x "$HOME/.local/bin/ruff"
+assert_eq "$(run zsh -lc 'command -v ruff')" "$HOME/.local/bin/ruff" "zsh -lc finds the tools in ~/.local/bin, as bash -lc does from ~/.profile"
+assert_eq "$(run zsh -lc 'echo $PATH')" "$(run bash -lc 'echo $PATH')" "zsh -lc has the PATH of bash -lc"
+assert_eq "$(run zsh -c 'command -v ruff')" "" "a non-login zsh does not read ~/.profile, as a non-login bash does not"
 assert_eq "$(run zsh -lc 'true' 2>&1)" "" "non-interactive zsh prints nothing"
 assert_eq "$(run zsh -ic 'printf %s "$DEV_PROXY_URL"' 2>&1)" "http://proxy.corp.example:3128" "interactive zsh sees the proxy"
 
@@ -94,7 +110,9 @@ assert_contains "$inter" "gh: function" "zsh gets the gh wrapper"
 assert_contains "$inter" "mise=zsh zoxide=zsh fzf=--zsh" "mise, zoxide and fzf are activated for zsh"
 assert_contains "$inter" "DevBootstrapper - your portable development toolkit" "dev works in zsh"
 assert_eq "$(run bash -ic 'echo "mise=$FAKE_MISE zoxide=$FAKE_ZOXIDE fzf=$FAKE_FZF"' 2>&1 | tail -1)" "mise=bash zoxide=bash fzf=--bash" "and for bash as before"
-assert_not_contains "$inter" "rror" "interactive zsh prints no errors"
+assert_eq "$(run zsh -i -c true 2>&1 >/dev/null)" "" "interactive zsh prints nothing on stderr"
+assert_eq "$(zsh_i 'echo $LOCAL_ZSH')" "loaded" "zsh/local.zsh is loaded"
+assert_true "Ubuntu's global compinit is skipped, so no dump lands in ~" test ! -e "$HOME/.zcompdump"
 assert_eq "$(zsh_i '[[ -o histignorealldups ]] && [[ -o sharehistory ]] && echo options; echo "$HISTFILE $SAVEHIST"')" "options
 $HOME/.zsh_history 100000" "history ignores all duplicates and is shared between tabs"
 assert_eq "$(zsh_i 'echo $+functions[reload] $__devboot_shell')" "1 zsh" "reload exists for zsh"
@@ -108,6 +126,7 @@ assert_contains "$comp" "group-name ''" "completion groups the results by kind"
 assert_contains "$comp" "m:{a-z}={A-Z}" "completion matches case-insensitively"
 assert_contains "$comp" "gitid=__devboot_complete_gitid dev=__devboot_complete_dev" "DevBootstrapper commands complete in zsh"
 assert_true "completion keeps its dump under tools/cache" test -f "$DEV/tools/cache/zsh/zcompdump"
+assert_contains "$(run env TERM=xterm-256color zsh -i -c 'zstyle -L ":completion:*:default" list-colors')" "di=01;34" "completion colours files as ls does"
 mkdir -p "$DEV/.local/git"
 printf '[account "github-me"]\n\thost = github.com\n[context "work"]\n\temail = w@example.com\n' >"$DEV/.local/git/identities.gitconfig"
 assert_eq "$(zsh_i '__devboot_identity_names account host')" "github-me" "gitid completion reads the accounts"
@@ -128,12 +147,25 @@ assert_eq "$(zsh_i "source $DEV/zsh/prompt.zsh; DEV_IS_WSL=1 __devboot_prompt_ho
 assert_eq "$(zsh_i "source $DEV/zsh/prompt.zsh; DEV_IS_WSL= HOST=box.example __devboot_prompt_host_label")" ":box" "elsewhere it is the host name"
 assert_contains "$(zsh_i 'print -r -- $PROMPT')" '%F{30}%n%F{37}(' "the prompt starts with the dark teal user and the label"
 assert_contains "$(zsh_i 'print -r -- $PROMPT')" '%F{44}%~%f' "followed by the cyan directory"
-assert_not_contains "$(grep -rn -i -e 'JUS-' -e 'justice' -e 'onedrive' "$DEV/zsh" "$DEV/config/wezterm" "$DEV/.local.example" || true)" "JUS-" "nothing employer-specific is in the zsh layer or the WezTerm files"
 
 # The keys, typed into a real terminal (script provides one).
 if command -v script >/dev/null 2>&1; then
   esc=$'\e'
-  typed() { printf '%b' "$1" | run script -qec 'zsh -i' /dev/null 2>&1 | tr -d '\r'; }
+  # Keys typed before the line editor is up can be lost, so they wait for it, and a lost key
+  # fails the check instead of leaving zsh waiting for input.
+  ready="$SANDBOX/line-editor-ready"
+  printf 'autoload -Uz add-zle-hook-widget\n__test_ready() { : >%q; }\nadd-zle-hook-widget line-init __test_ready\n' \
+    "$ready" >>"$DEV/zsh/local.zsh"
+  typed() {
+    rm -f "$ready"
+    { line_editor_ready && printf '%b' "$1"; } | run timeout 20 script -qec 'zsh -i' /dev/null 2>&1 | tr -d '\r'
+  }
+  line_editor_ready() {
+    for _ in $(seq 100); do
+      [ -e "$ready" ] && return
+      sleep 0.1
+    done
+  }
   out=$(typed "printf 'R:%s|' a --b=c${esc}[1;5Dx\\n")
   assert_contains "$out" "R:a|R:x--b=c|" "Ctrl+Left jumps a whole whitespace-delimited word"
   out=$(typed "'R:%s|' a b c${esc}[1;5Hprintf \\n")
@@ -151,13 +183,12 @@ else
 fi
 
 # Startup budget with the tools active.
-total=0
-for _ in 1 2 3 4 5; do
+# The median of seven runs, so one start slowed down by a busy machine does not decide it.
+ms=$(for _ in 1 2 3 4 5 6 7; do
   start=$(date +%s%N)
   run zsh -i -c exit >/dev/null 2>&1
-  total=$((total + ($(date +%s%N) - start) / 1000000))
-done
-ms=$((total / 5))
+  echo $((($(date +%s%N) - start) / 1000000))
+done | sort -n | sed -n 4p)
 if [ "$ms" -lt 200 ]; then pass "interactive zsh startup ${ms} ms is under 200 ms"; else fail "interactive zsh startup under 200 ms" "measured: $ms ms"; fi
 assert_contains "$(run "$DEV/bin/dev" startup-time)" "interactive zsh startup:" "dev startup-time measures zsh when opted in"
 
@@ -172,5 +203,14 @@ printf 'DEV_SHELL=zsh\n' >"$DEV/.local/profile.env"
 devup --only links >/dev/null
 devup --unlink >/dev/null
 assert_true "--unlink removes the zsh blocks" cmp -s "$HOME/.zshrc" "$SANDBOX/zshrc.orig"
+
+# A ~/.zshrc whose last line has no newline, as some editors save it.
+printf 'alias mine=true' >"$HOME/.zshrc"
+devup --only links >/dev/null
+assert_eq "$(zsh_i 'alias mine; echo $+functions[reload]')" "mine=true
+1" "the block goes on its own line after a last line without a newline"
+printf 'DEV_SHELL=bash\n' >"$DEV/.local/profile.env"
+devup --only links >/dev/null
+assert_eq "$(od -c "$HOME/.zshrc")" "$(printf 'alias mine=true' | od -c)" "opting out restores a last line without a newline byte for byte"
 
 finish

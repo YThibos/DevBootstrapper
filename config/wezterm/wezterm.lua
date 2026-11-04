@@ -9,6 +9,8 @@ local M = {}
 
 -- tmux's own prefix, Ctrl-b, as the raw byte WezTerm types into the focused pane.
 local TMUX_PREFIX = string.char(2)
+-- How long tmux gets to open its command prompt before the command is typed into it.
+local TMUX_PROMPT_OPEN_MS = 50
 
 -- Today's date as the update stamp format used by devup.
 local function today()
@@ -246,8 +248,14 @@ end
 -- A key that runs a tmux command in the focused pane's own tmux, through the command prompt
 -- (prefix + ':'). The command runs in the tmux server, so nothing starts a nested tmux client
 -- and it always targets the pane in focus.
+-- tmux opens the prompt only after it has read the prefix and ':', and drops whatever arrived
+-- with them, so the command follows once the prompt is open.
 local function tmux(command)
-  return act.SendString(TMUX_PREFIX .. ':' .. command .. '\r')
+  return wezterm.action_callback(function(window, pane)
+    window:perform_action(act.SendString(TMUX_PREFIX .. ':'), pane)
+    wezterm.sleep_ms(TMUX_PROMPT_OPEN_MS)
+    window:perform_action(act.SendString(command .. '\r'), pane)
+  end)
 end
 
 -- Ctrl+t: asks for a name and opens that tmux session in a new tab. Names are limited to

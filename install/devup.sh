@@ -83,6 +83,8 @@ ZSHENV_BEGIN='# >>> DevBootstrapper (zsh env) >>>'
 ZSHENV_END='# <<< DevBootstrapper (zsh env) <<<'
 ZSHRC_BEGIN='# >>> DevBootstrapper (zsh) >>>'
 ZSHRC_END='# <<< DevBootstrapper (zsh) <<<'
+# Ends a BEGIN marker when devup had to end the user's last line first, so removal can undo it.
+ADDED_LINE_BREAK=' (devup ended the line above)'
 
 # bootstrap_ref SCRIPT - how a shell startup file refers to a bootstrap script of the dev home.
 bootstrap_ref() {
@@ -106,20 +108,27 @@ add_rc_block() {
     cat "$tmp" >"$rc"
     rm -f "$tmp"
   else
+    if [ -n "$(tail -c1 "$rc")" ]; then
+      echo >>"$rc"
+      begin+=$ADDED_LINE_BREAK
+    fi
     printf '%s\n%s\n%s\n%s\n' "$begin" "$comment" "$line" "$end" >>"$rc"
   fi
 }
 
-# remove_rc_block FILE BEGIN END - removes a marked block. Returns 0 when FILE had it, and
-# leaves a FILE without it untouched.
+# remove_rc_block FILE BEGIN END - removes a marked block, and the line break devup added before
+# it when nothing follows the block. Returns 0 when FILE had it, and leaves a FILE without it
+# untouched.
 remove_rc_block() {
   local rc=$1 begin=$2 end=$3 tmp
   grep -qsF "$begin" "$rc" || return 1
   tmp=$(mktemp)
-  awk -v b="$begin" -v e="$end" '
-    $0 == b { skip = 1; next }
+  awk -v b="$begin" -v j="$begin$ADDED_LINE_BREAK" -v e="$end" '
+    $0 == b || $0 == j { skip = 1; unbreak = ($0 == j); next }
     $0 == e { skip = 0; next }
-    !skip { print }
+    skip { next }
+    { if (n++) print last; last = $0; unbreak = 0 }
+    END { if (n) printf "%s%s", last, (unbreak ? "" : "\n") }
   ' "$rc" >"$tmp"
   cat "$tmp" >"$rc"
   rm -f "$tmp"
@@ -498,10 +507,7 @@ step_links() {
     printf '%s\n%s\n' '# Machine-local tool defaults, written by use-version (docs/tools.md). Not shared.' '[tools]' \
       >"$DEV_HOME/.local/mise/config.toml"
   fi
-  if [ ! -f "$DEV_HOME/.local/wezterm.lua" ]; then
-    cp "$DEV_HOME/.local.example/wezterm.lua" "$DEV_HOME/.local/wezterm.lua"
-    info "created .local/wezterm.lua from .local.example (WezTerm backgrounds)"
-  fi
+  seed_local_wezterm
   local src link mode r count=0
   while IFS='|' read -r src link mode; do
     r=$(ensure_link "$src" "$link" "$mode") || return 1
@@ -510,6 +516,18 @@ step_links() {
   ensure_bashrc
   sync_zsh_blocks
   ok "links in place ($count changed)"
+}
+
+# .local/wezterm.lua is the user's own once created, so an EDI rule from before EDI's face moved
+# to the EDI checkout gets a hint rather than an edit.
+seed_local_wezterm() {
+  local settings="$DEV_HOME/.local/wezterm.lua"
+  if [ ! -f "$settings" ]; then
+    cp "$DEV_HOME/.local.example/wezterm.lua" "$settings"
+    info "created .local/wezterm.lua from .local.example (WezTerm backgrounds)"
+  elif grep -q "'edi-darkness.jpg'" "$settings"; then
+    warn "EDI's face in .local/wezterm.lua still uses the Pictures folder; copy the EDI rule from .local.example/wezterm.lua (docs/wezterm.md)"
+  fi
 }
 
 step_mise() {
@@ -578,7 +596,7 @@ generate_completions() {
   while IFS='|' read -r name command; do
     read -ra words <<<"${command//@SHELL@/$shell}"
     have "${words[0]}" || continue
-    if SHELL="/usr/bin/$shell" timeout 30 "${words[@]}" </dev/null >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    if SHELL=$shell timeout 30 "${words[@]}" </dev/null >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
       file=$prefix$name
       [[ $name == *.zsh ]] && file=$name
       cp "$tmp" "$dir/$file"
