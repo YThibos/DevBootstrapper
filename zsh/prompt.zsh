@@ -2,7 +2,7 @@
 #
 # Colours run from dark to light teal: user #008787, label #00afaf, directory #00d7d7, and the
 # git: prefix with its brackets #5fffff. The branch shows the state of the workspace:
-# green clean, yellow staged or unstaged changes, red untracked files (which take priority).
+# green clean, yellow staged or unstaged changes, red untracked files.
 
 __devboot_prompt_host_label() {
   if [[ -n ${DEV_IS_WSL:-} ]]; then
