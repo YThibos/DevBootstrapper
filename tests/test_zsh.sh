@@ -35,6 +35,20 @@ esac
 NG
 chmod +x "$FAKEBIN/ng"
 
+# Like the real npm, one script for both shells that registers itself with whichever it finds.
+cat >"$FAKEBIN/npm" <<'NPM'
+#!/usr/bin/env bash
+cat <<'SCRIPT'
+if type complete &>/dev/null; then
+  complete -o default -F _npm_completion npm
+elif type compdef &>/dev/null; then
+  _npm_completion() { compadd -- install run; }
+  compdef _npm_completion npm
+fi
+SCRIPT
+NPM
+chmod +x "$FAKEBIN/npm"
+
 devup() { run bash "$DEV/install/devup.sh" "$@" 2>&1; }
 zsh_i() { run zsh -i -c "$1" 2>&1; }
 
@@ -125,6 +139,7 @@ assert_contains "$comp" "menu 'select=long'" "completion offers a menu to select
 assert_contains "$comp" "group-name ''" "completion groups the results by kind"
 assert_contains "$comp" "m:{a-z}={A-Z}" "completion matches case-insensitively"
 assert_contains "$comp" "gitid=__devboot_complete_gitid dev=__devboot_complete_dev" "DevBootstrapper commands complete in zsh"
+assert_eq "$(zsh_i 'echo "${_comps[npm]} ${_comps[ng]}"')" "_npm_completion _ng_yargs_completions" "npm and ng complete in zsh"
 assert_true "completion keeps its dump under tools/cache" test -f "$DEV/tools/cache/zsh/zcompdump"
 assert_contains "$(run env TERM=xterm-256color zsh -i -c 'zstyle -L ":completion:*:default" list-colors')" "di=01;34" "completion colours files as ls does"
 mkdir -p "$DEV/.local/git"
@@ -182,17 +197,21 @@ else
   echo "  skipped: no script command to provide a terminal"
 fi
 
-# Startup budget with the tools active.
-# The median of seven runs of CPU time (user plus system), which a busy machine hardly changes,
-# where the wall-clock time of a start would.
-cpu_ms() {
-  local TIMEFORMAT='%3U %3S'
-  local user system
-  read -r user system < <({ time run zsh -i -c exit >/dev/null 2>&1; } 2>&1)
-  awk -v u="$user" -v s="$system" 'BEGIN { printf "%d\n", (u + s) * 1000 }'
+# Startup budget with the tools active, as the median of seven starts.
+# The budget holds for CPU time (user plus system), which a busy machine hardly changes;
+# a loose ceiling on elapsed time catches a start that waits, on the network or a sleep.
+startup_ms() {
+  local TIMEFORMAT='%3R %3U %3S'
+  local elapsed user system
+  read -r elapsed user system < <({ time run zsh -i -c exit >/dev/null 2>&1; } 2>&1)
+  awk -v e="$elapsed" -v u="$user" -v s="$system" 'BEGIN { printf "%d %d\n", e * 1000, (u + s) * 1000 }'
 }
-ms=$(for _ in 1 2 3 4 5 6 7; do cpu_ms; done | sort -n | sed -n 4p)
-if [ "$ms" -lt 200 ]; then pass "interactive zsh startup ${ms} ms is under 200 ms"; else fail "interactive zsh startup under 200 ms" "measured: $ms ms"; fi
+median() { sort -n | sed -n 4p; }
+starts=$(for _ in 1 2 3 4 5 6 7; do startup_ms; done)
+ms=$(cut -d' ' -f2 <<<"$starts" | median)
+elapsed_ms=$(cut -d' ' -f1 <<<"$starts" | median)
+if [ "$ms" -lt 200 ]; then pass "interactive zsh startup ${ms} ms CPU time is under 200 ms"; else fail "interactive zsh startup under 200 ms CPU time" "measured: $ms ms"; fi
+if [ "$elapsed_ms" -lt 1000 ]; then pass "interactive zsh startup waits on nothing (${elapsed_ms} ms elapsed)"; else fail "interactive zsh startup waits on nothing" "measured: $elapsed_ms ms elapsed"; fi
 assert_contains "$(run "$DEV/bin/dev" startup-time)" "interactive zsh startup:" "dev startup-time measures zsh when opted in"
 
 # ---------------------------------------------------------------------------- opting out again

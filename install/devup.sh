@@ -628,11 +628,10 @@ ng|ng completion script
 LIST
 }
 
-# zsh takes the same tools as completion functions (_name), except npm, whose script is for
-# bash only, and ng, whose script is sourced.
+# zsh takes the same tools as completion functions (_name), except npm and ng, whose scripts
+# are sourced.
 zsh_completion_commands() {
-  completion_commands | grep -v -e '^npm|' -e '^ng|'
-  echo 'ng.zsh|ng completion script'
+  completion_commands | sed -E 's/^(npm|ng)\|/\1.zsh|/'
 }
 
 step_doctor() {
