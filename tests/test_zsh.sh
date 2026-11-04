@@ -19,11 +19,9 @@ printf 'case $- in\n    *i*) ;;\n      *) return;;\nesac\n' >"$HOME/.bashrc"
 printf 'if [ -n "$BASH_VERSION" ]; then\n    . "$HOME/.bashrc"\nfi\nif [ -d "$HOME/.local/bin" ] ; then\n    PATH="$HOME/.local/bin:$PATH"\nfi\n' >"$HOME/.profile"
 
 # Stand-ins for the tools whose shell integration differs per shell: each prints what it was asked.
+# They start without forking, like the real native tools, so they do not eat the startup budget.
 for tool in mise zoxide fzf; do
-  cat >"$FAKEBIN/$tool" <<'TOOL'
-#!/usr/bin/env bash
-echo "export FAKE_$(basename "$0" | tr a-z A-Z)=${*: -1}"
-TOOL
+  printf '#!/bin/sh\nfor last; do :; done\necho "export FAKE_%s=$last"\n' "${tool^^}" >"$FAKEBIN/$tool"
   chmod +x "$FAKEBIN/$tool"
 done
 
@@ -153,7 +151,21 @@ assert_contains "$(zsh_i 'print -r -- $PROMPT')" '%F{44}%~%f' "followed by the c
 # The keys, typed into a real terminal (script provides one).
 if command -v script >/dev/null 2>&1; then
   esc=$'\e'
-  typed() { printf '%b' "$1" | run script -qec 'zsh -i' /dev/null 2>&1 | tr -d '\r'; }
+  # Keys typed before the line editor is up can be lost, so they wait for it, and a lost key
+  # fails the check instead of leaving zsh waiting for input.
+  ready="$SANDBOX/line-editor-ready"
+  printf 'autoload -Uz add-zle-hook-widget\n__test_ready() { : >%q; }\nadd-zle-hook-widget line-init __test_ready\n' \
+    "$ready" >>"$DEV/zsh/local.zsh"
+  typed() {
+    rm -f "$ready"
+    { line_editor_ready && printf '%b' "$1"; } | run timeout 20 script -qec 'zsh -i' /dev/null 2>&1 | tr -d '\r'
+  }
+  line_editor_ready() {
+    for _ in $(seq 100); do
+      [ -e "$ready" ] && return
+      sleep 0.1
+    done
+  }
   out=$(typed "printf 'R:%s|' a --b=c${esc}[1;5Dx\\n")
   assert_contains "$out" "R:a|R:x--b=c|" "Ctrl+Left jumps a whole whitespace-delimited word"
   out=$(typed "'R:%s|' a b c${esc}[1;5Hprintf \\n")
@@ -171,13 +183,12 @@ else
 fi
 
 # Startup budget with the tools active.
-total=0
-for _ in 1 2 3 4 5; do
+# The median of seven runs, so one start slowed down by a busy machine does not decide it.
+ms=$(for _ in 1 2 3 4 5 6 7; do
   start=$(date +%s%N)
   run zsh -i -c exit >/dev/null 2>&1
-  total=$((total + ($(date +%s%N) - start) / 1000000))
-done
-ms=$((total / 5))
+  echo $((($(date +%s%N) - start) / 1000000))
+done | sort -n | sed -n 4p)
 if [ "$ms" -lt 200 ]; then pass "interactive zsh startup ${ms} ms is under 200 ms"; else fail "interactive zsh startup under 200 ms" "measured: $ms ms"; fi
 assert_contains "$(run "$DEV/bin/dev" startup-time)" "interactive zsh startup:" "dev startup-time measures zsh when opted in"
 
