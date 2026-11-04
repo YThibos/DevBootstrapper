@@ -37,7 +37,8 @@ The installer:
    It decides the default git context outside `sources/` and whether proxy questions are asked.
 2. **Network**: proxy and corporate certificate (work profile), see [network.md](network.md).
    Sections 1 and 2 end with a summary of your answers; answer `n` to go through them again.
-3. **Shell and WSL**: creates `.secrets`, sets `systemd=true` and `appendWindowsPath=false` in `/etc/wsl.conf` and adds two small blocks to `~/.bashrc`.
+3. **Shell and WSL**: asks for your interactive shell, creates `.secrets`, sets `systemd=true` and `appendWindowsPath=false` in `/etc/wsl.conf` and adds two small blocks to `~/.bashrc`.
+   bash is the default; answer `zsh` for the zsh opt-in, which adds blocks to `~/.zshenv` and `~/.zshrc` as well (see [shell.md](shell.md)).
 4. **Git identities**: your commit names and emails for `home` and `work`, and your forge accounts, each shown for review before it is saved, then a review menu to change anything. See [identities.md](identities.md).
 5. **Install**: every tool, with a summary at the end.
 
@@ -48,12 +49,13 @@ Afterwards fill in your tokens with the `secrets` command and check them with `g
 ## 4. Every day
 
 Start "WezTerm (DevBootstrapper)" from the Start menu.
+Every tab is a tmux session: `Ctrl+t` opens another one (see [wezterm.md](wezterm.md)).
 On the first start of the day an extra tab runs the update; type your `sudo` password there.
 Run `dev` for an overview and `dev cheat` for the cheat sheet.
 
 ## Uninstall
 
-1. `devup --unlink` removes every link and the `~/.bashrc` blocks.
+1. `devup --unlink` removes every link and the `~/.bashrc`, `~/.zshenv` and `~/.zshrc` blocks.
 2. Delete `~/development`.
 3. On Windows, delete `C:\development\tools\wezterm`, `C:\development\tools\launcher` and the Start-menu shortcut, and restore `.wslconfig` from its `.devboot-backup-*` copy if you let the installer change it.
 

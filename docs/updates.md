@@ -10,16 +10,17 @@
 | windows | Copies the launcher and WezTerm stub to `C:\development\tools\launcher` (WSL only). |
 | certs | Adds the corporate root certificate to Ubuntu's trust store (work profile). |
 | apt | apt proxy, git-core PPA, base packages, `apt-get upgrade` (asks for `sudo`). |
-| render | Renders Maven and npm settings from templates into `.local/`. |
-| links | Links tool configs into place and keeps the `~/.bashrc` blocks. |
+| render | Renders Maven, npm and tmux settings from templates into `.local/`. |
+| fonts | Installs Fira Code into `.local/fonts` for WezTerm. |
+| links | Links tool configs into place and keeps the `~/.bashrc` blocks, and the zsh blocks when you opted in to zsh. |
 | mise | Installs or updates mise and every tool, then removes versions no longer used. |
 | certs-java | Imports the corporate certificate into every installed JDK. |
 | identities | Regenerates the git identity config. |
-| completions | Generates bash completions for installed tools. |
+| completions | Generates bash completions for installed tools, and zsh completions when you opted in to zsh. |
 | doctor | Health report (also `dev doctor`). |
 
 `devup --skip apt,mise` and `devup --only links` run part of it.
-`devup --unlink` removes every link and the `~/.bashrc` blocks.
+`devup --unlink` removes every link and the `~/.bashrc` and zsh blocks.
 
 ## Daily update
 
