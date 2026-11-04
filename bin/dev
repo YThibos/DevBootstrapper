@@ -43,7 +43,7 @@ cheat_section() {
     sed -E 's/^[[:space:]]*(#|--): //' |
     awk -F ' \\| ' '{ printf "  %-34s %s\n", $1, $2 }') || true
   [ -n "$out" ] || return 0
-  if [ -n "$FILTER" ]; then
+  if [ -n "$FILTER" ] && ! grep -qi -- "$FILTER" <<<"$title"; then
     out=$(printf '%s\n' "$out" | grep -i -- "$FILTER" || true)
     [ -n "$out" ] || return 0
   fi

@@ -20,6 +20,7 @@ bash stays the default.
 Set `DEV_SHELL=zsh` in `.local/profile.env` (the first run asks, and `devup` installs zsh) and the next `devup` switches the machine to zsh:
 
 - `~/.zshenv` gets a block that loads the same environment layer as bash (`bash/env.sh`), so `zsh -lc` and a plain `zsh -c` see the same PATH, proxy, caches, tools and `.secrets` as `bash -lc` does.
+- A login zsh also reads `/etc/profile` and `~/.profile`, as a login bash does, so directories such as `~/.local/bin` and `/snap/bin` are on the PATH in both.
 - `~/.zshrc` gets a block, at the bottom so it wins over your own settings, that loads the interactive layer in `zsh/`.
 - Without the opt-in neither file is ever touched.
   Setting `DEV_SHELL` back to `bash` removes the blocks again, and a file that held nothing else.

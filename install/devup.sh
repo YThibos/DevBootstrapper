@@ -498,10 +498,7 @@ step_links() {
     printf '%s\n%s\n' '# Machine-local tool defaults, written by use-version (docs/tools.md). Not shared.' '[tools]' \
       >"$DEV_HOME/.local/mise/config.toml"
   fi
-  if [ ! -f "$DEV_HOME/.local/wezterm.lua" ]; then
-    cp "$DEV_HOME/.local.example/wezterm.lua" "$DEV_HOME/.local/wezterm.lua"
-    info "created .local/wezterm.lua from .local.example (WezTerm backgrounds)"
-  fi
+  seed_local_wezterm
   local src link mode r count=0
   while IFS='|' read -r src link mode; do
     r=$(ensure_link "$src" "$link" "$mode") || return 1
@@ -510,6 +507,18 @@ step_links() {
   ensure_bashrc
   sync_zsh_blocks
   ok "links in place ($count changed)"
+}
+
+# .local/wezterm.lua is the user's own once created, so an EDI rule from before EDI's face moved
+# to the EDI checkout gets a hint rather than an edit.
+seed_local_wezterm() {
+  local settings="$DEV_HOME/.local/wezterm.lua"
+  if [ ! -f "$settings" ]; then
+    cp "$DEV_HOME/.local.example/wezterm.lua" "$settings"
+    info "created .local/wezterm.lua from .local.example (WezTerm backgrounds)"
+  elif grep -q "'edi-darkness.jpg'" "$settings"; then
+    warn "EDI's face in .local/wezterm.lua still uses the Pictures folder; copy the EDI rule from .local.example/wezterm.lua (docs/wezterm.md)"
+  fi
 }
 
 step_mise() {

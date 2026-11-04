@@ -37,6 +37,8 @@ When it is missing, `devup` creates it from [.local.example/wezterm.lua](../.loc
   The picture is `~/.edi/state/wallpaper.png` when EDI has made one, otherwise `docs/images/EDI-darkness.jpg` in the EDI checkout.
   The checkout is `~/EDI`; change `local edi = '~/EDI'` at the top of `.local/wezterm.lua` when yours lives elsewhere.
   With neither file the rule is skipped and the pane keeps its usual look.
+  WezTerm picks the picture when it loads its configuration, so press `Ctrl+Shift+r` once after either file first appears.
+  A `.local/wezterm.lua` from before EDI's face moved to the EDI checkout keeps its old rule; `devup` warns about it until you copy the EDI rule from the example.
 - Without a matching rule the `default` image shows; without any image the plain palette shows.
 - Edits apply on `Ctrl+Shift+r`.
 

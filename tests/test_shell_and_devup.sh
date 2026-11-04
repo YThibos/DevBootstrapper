@@ -110,6 +110,7 @@ for want in "gitid list" "mvnuse [version]" "jdkuse [version]" "clone <url> [con
   assert_contains "$cheat" "$want" "dev cheat lists: $want"
 done
 assert_eq "$(run "$DEV/bin/dev" cheat maven | grep -c 'mvn')" "$(run "$DEV/bin/dev" cheat maven | grep -c '^  ')" "dev cheat <filter> narrows the sheet"
+assert_contains "$(run "$DEV/bin/dev" cheat zsh)" "Ctrl+Home" "a filter matching a section title keeps the whole section"
 assert_contains "$(run "$DEV/bin/dev" docs)" "getting-started" "dev docs lists the topics"
 assert_contains "$(run "$DEV/bin/dev" docs identities)" "gitid" "dev docs <topic> shows a topic"
 

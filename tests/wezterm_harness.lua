@@ -81,6 +81,7 @@ elseif mode == 'prompt' then
     if key.key == 't' and key.mods == 'CTRL' then
       local window = {
         perform_action = function(_, action)
+          spawned[#spawned + 1] = action
           print(string.format('%s domain=%s %s', action.action, action.arg.domain.DomainName, show(action.arg.args)))
         end,
       }

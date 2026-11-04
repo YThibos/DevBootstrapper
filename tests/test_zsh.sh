@@ -16,7 +16,7 @@ fi
 
 # A stock-Ubuntu-like bash setup, so that bash -lc reads the DevBootstrapper blocks.
 printf 'case $- in\n    *i*) ;;\n      *) return;;\nesac\n' >"$HOME/.bashrc"
-printf 'if [ -n "$BASH_VERSION" ]; then\n    . "$HOME/.bashrc"\nfi\n' >"$HOME/.profile"
+printf 'if [ -n "$BASH_VERSION" ]; then\n    . "$HOME/.bashrc"\nfi\nif [ -d "$HOME/.local/bin" ] ; then\n    PATH="$HOME/.local/bin:$PATH"\nfi\n' >"$HOME/.profile"
 
 # Stand-ins for the tools whose shell integration differs per shell: each prints what it was asked.
 for tool in mise zoxide fzf; do
@@ -95,6 +95,11 @@ done
 assert_eq "$(run zsh -c 'printf %s "$DEV_HOME"')" "$DEV" "plain zsh -c gets the environment too, through ~/.zshenv"
 assert_eq "$(run zsh -lc 'echo $PATH' | cut -d: -f1-4)" "$(run bash -lc 'echo $PATH' | cut -d: -f1-4)" "zsh -lc has the same toolkit PATH entries first"
 assert_eq "$(run zsh -lc 'command -v gitid')" "$DEV/bin/gitid" "zsh -lc finds the DevBootstrapper commands"
+mkdir -p "$HOME/.local/bin"
+printf '#!/bin/sh\n' >"$HOME/.local/bin/ruff" && chmod +x "$HOME/.local/bin/ruff"
+assert_eq "$(run zsh -lc 'command -v ruff')" "$HOME/.local/bin/ruff" "zsh -lc finds the tools in ~/.local/bin, as bash -lc does from ~/.profile"
+assert_eq "$(run zsh -lc 'echo $PATH')" "$(run bash -lc 'echo $PATH')" "zsh -lc has the PATH of bash -lc"
+assert_eq "$(run zsh -c 'command -v ruff')" "" "a non-login zsh does not read ~/.profile, as a non-login bash does not"
 assert_eq "$(run zsh -lc 'true' 2>&1)" "" "non-interactive zsh prints nothing"
 assert_eq "$(run zsh -ic 'printf %s "$DEV_PROXY_URL"' 2>&1)" "http://proxy.corp.example:3128" "interactive zsh sees the proxy"
 

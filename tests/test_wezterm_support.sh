@@ -13,7 +13,9 @@ mkdir -p "$DEV/.local"
 # The tmux configuration: rendered for the machine's shell and linked from ~/.tmux.conf.
 tmux_conf() { cat "$DEV/.local/tmux/tmux.conf"; }
 printf 'DEV_SHELL=zsh\n' >"$DEV/.local/profile.env"
-devup --only render,links >/dev/null
+out=$(devup --only render,links)
+assert_contains "$out" "created .local/wezterm.lua" "the first devup seeds the WezTerm settings"
+assert_not_contains "$out" "EDI's face" "with the current EDI rule"
 assert_eq "$(readlink "$HOME/.tmux.conf")" "$DEV/.local/tmux/tmux.conf" "~/.tmux.conf is the file that is linked"
 assert_contains "$(tmux_conf)" 'set -g default-command "zsh -l"' "tmux starts zsh as a login shell when opted in"
 assert_contains "$(tmux_conf)" "set -g allow-passthrough on" "tmux lets the shell talk to WezTerm"
@@ -24,6 +26,12 @@ assert_contains "$(tmux_conf)" 'set -g default-command "bash -l"' "tmux starts b
 : >"$DEV/.local/profile.env"
 devup --only render >/dev/null
 assert_contains "$(tmux_conf)" 'set -g default-command "bash -l"' "and without any shell setting"
+
+# Settings from before EDI's face moved to the EDI checkout are kept, with a hint.
+printf "return { rules = { { title = '^edi', image = 'edi-darkness.jpg' } } }\n" >"$DEV/.local/wezterm.lua"
+cp "$DEV/.local/wezterm.lua" "$SANDBOX/wezterm.old"
+assert_contains "$(devup --only links)" "EDI's face in .local/wezterm.lua still uses the Pictures folder" "devup points at the earlier EDI rule"
+assert_true "and leaves the file as it was" cmp -s "$DEV/.local/wezterm.lua" "$SANDBOX/wezterm.old"
 if command -v tmux >/dev/null 2>&1; then
   tmux_run() { run env TMUX_TMPDIR="$SANDBOX" tmux -L devboot-test "$@"; }
   tmux_run -f "$HOME/.tmux.conf" new-session -d -s check

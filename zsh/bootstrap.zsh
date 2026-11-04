@@ -15,6 +15,9 @@ fi
 
 if [[ ${1:-} == env ]]; then
   skip_global_compinit=1
+  [[ -o login ]] && emulate sh -c '
+    [ -r /etc/profile ] && . /etc/profile
+    [ -r "$HOME/.profile" ] && . "$HOME/.profile"'
   unset __devboot_zsh __devboot_bash
   return 0
 fi

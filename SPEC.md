@@ -203,6 +203,7 @@ With the opt-in, `devup` adds marked blocks, using `$ZDOTDIR` when set:
 
 1. At the top of `~/.zshenv`, `zsh/bootstrap.zsh env` loads the same `bash/env.sh` as bash does.
    zsh reads `~/.zshenv` for every shell, so `zsh -lc` and a plain `zsh -c` get the same PATH, proxy, caches and `.secrets` as `bash -lc`.
+   A login zsh then reads `/etc/profile` and `~/.profile` in sh emulation, as a login bash does, so the directories they add (such as `~/.local/bin` and `/snap/bin`) are on both PATHs.
    `env.sh` is written in the subset of bash and zsh, and finds its own location through `$0` where bash has `BASH_SOURCE`.
 2. At the bottom of `~/.zshrc`, `zsh/bootstrap.zsh` loads the interactive layer after the user's own settings.
    It sources `history.zsh`, `keybindings.zsh` and `completion.zsh`, then the `bash/tools/*.sh` files, `aliases.sh` and `functions.sh` that both shells share (each asks `__devboot_shell` which shell it is for: `mise activate`, `fzf` and `zoxide` differ per shell), then `prompt.zsh`, and `zsh/local.zsh` last.
@@ -342,6 +343,8 @@ Keys live in `config/wezterm/wezterm.lua` with `--:` cheat lines.
 
 EDI's face is a rule in `.local.example/wezterm.lua`, seeded into `.local/wezterm.lua` by the `links` step: while a pane's title is `edi-<yymmdd>-<hhmm>` it shows Fira Code, `#35aab6` text, a bright cyan cursor and a deep teal selection over a black underlay with the picture fitted whole.
 The picture is the first existing of `~/.edi/state/wallpaper.png` (EDI's wallpaper) and `docs/images/EDI-darkness.jpg` in the EDI checkout (`~/EDI`, configurable); with neither, the rule is skipped silently.
+The picture is chosen when WezTerm loads its configuration, so a file that appears later shows after a reload (`Ctrl+Shift+r`).
+The `links` step never edits an existing `.local/wezterm.lua`; it warns while that file still holds the earlier EDI rule, which looked for the picture in the Pictures folder.
 Linux paths reach WezTerm through the same `\\wsl.localhost` share as the dev home.
 The `fonts` step installs Fira Code (SIL Open Font License) from its GitHub release into `.local/fonts`.
 
