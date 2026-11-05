@@ -50,7 +50,8 @@ See [docs/getting-started.md](docs/getting-started.md).
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md) - install, first run, uninstall
+- [Getting started](docs/getting-started.md) - install and first run
+- [Uninstall](docs/uninstall.md) - a full reset for a fresh install, or removing DevBootstrapper but keeping Ubuntu
 - [Shell](docs/shell.md) - how the bash setup loads, the zsh opt-in, and how to extend it
 - [Tools and versions](docs/tools.md) - where each tool comes from, adding tools, switching versions
 - [Git identities](docs/identities.md) - several accounts per forge with gitid

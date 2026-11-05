@@ -450,7 +450,9 @@ Everything outside `~/development`, listed so it can be audited and removed:
 - WSL: two marked blocks in `~/.bashrc`, and two in `~/.zshenv` and `~/.zshrc` for the zsh opt-in; the symlinks from section 10 (including `~/.cache` and `~/.local/share/mise`); `/etc/wsl.conf`; the apt drop-ins for the proxy and the git PPA; the corporate certificate in the system trust store; and the apt packages.
 - Windows: `C:\development\tools\wezterm\` and `C:\development\tools\launcher\`, the Start-menu shortcut and, opt-in, `%USERPROFILE%\.wslconfig`.
 
-`docs/getting-started.md` documents uninstall: `devup --unlink` removes the symlinks and the `~/.bashrc` and zsh blocks, then delete `~/development`, and the Windows tools folders and shortcut.
+`docs/uninstall.md` documents two ways out.
+A full reset unregisters the Ubuntu distribution, removes the Windows tools folders, the shortcut and WezTerm's runtime folder, and restores `.wslconfig` from its oldest backup, so the next install starts from nothing.
+Keeping Ubuntu, `devup --unlink` removes the symlinks and the `~/.bashrc` and zsh blocks, then `~/development`, EDI and the same Windows pieces are deleted.
 
 ## 17. Acceptance criteria
 

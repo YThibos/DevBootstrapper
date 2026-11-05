@@ -55,8 +55,4 @@ Run `dev` for an overview and `dev cheat` for the cheat sheet.
 
 ## Uninstall
 
-1. `devup --unlink` removes every link and the `~/.bashrc`, `~/.zshenv` and `~/.zshrc` blocks.
-2. Delete `~/development`.
-3. On Windows, delete `C:\development\tools\wezterm`, `C:\development\tools\launcher` and the Start-menu shortcut, and restore `.wslconfig` from its `.devboot-backup-*` copy if you let the installer change it.
-
-Files replaced by links during setup are kept in `~/development/tmp/backup-<date>/`.
+See [uninstall.md](uninstall.md): a full reset that also removes the Ubuntu distribution, for a fresh test install, or removing DevBootstrapper while keeping Ubuntu.
