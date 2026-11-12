@@ -49,18 +49,21 @@ assert_eq "$(harness prompt 'x;reboot')" ignored "a name that could inject a com
 assert_eq "$(harness prompt a.b)" ignored "a name tmux would reject is ignored"
 assert_contains "$(harness startup)" "exec tmux new-session -A -s main" "the first window is the tmux session main"
 
-# Reloading: the machine's settings file is watched, or its folder until the file exists.
-assert_eq "$(harness watched)" "$DEV/.local" "without .local/wezterm.lua its folder is watched, so the file's arrival reloads"
+# Reloading: WezTerm cannot watch files inside WSL, so the configuration checks them itself.
+assert_eq "$(harness reload none)" "before the interval: 0, after: " "nothing changed, nothing reloads"
+mkdir -p "$DEV/.local"
+assert_eq "$(harness reload local)" "before the interval: 0, after: ReloadConfiguration" ".local/wezterm.lua appearing reloads once, after the check interval"
+rm "$DEV/.local/wezterm.lua"
 
 # EDI's face.
 edi_title=edi-261104-0853
 image() { harness face "$edi_title" | sed -n 's/^image=//p'; }
 use_settings
-assert_eq "$(harness watched)" "$DEV/.local/wezterm.lua" "a change to .local/wezterm.lua reloads the configuration"
+assert_eq "$(harness reload local)" "before the interval: 0, after: ReloadConfiguration" "a change to .local/wezterm.lua reloads the configuration"
 assert_eq "$(harness font-size)" "11.0" "the font size is 11 by default"
 printf 'font_size = 9.0,\n' >"$SANDBOX/size" && sed -i "/^return {/r $SANDBOX/size" "$DEV/.local/wezterm.lua"
 assert_eq "$(harness font-size)" "9.0" "a machine sets its own font size in .local/wezterm.lua"
-assert_eq "$(harness face "$edi_title")" "no background rules" "without any image the EDI rule is skipped silently"
+assert_eq "$(harness face "$edi_title")" "" "without any image the EDI rule is skipped silently"
 mkdir -p "$HOME/EDI/docs/images"
 touch "$HOME/EDI/docs/images/EDI-darkness.jpg"
 assert_eq "$(image)" "$HOME/EDI/docs/images/EDI-darkness.jpg" "EDI's face is docs/images/EDI-darkness.jpg of the EDI checkout"

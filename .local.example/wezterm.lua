@@ -1,5 +1,5 @@
 -- Machine WezTerm settings for DevBootstrapper (docs/wezterm.md). Copy to .local/wezterm.lua;
--- .local/ is never committed. WezTerm watches this file and reloads its configuration on a change.
+-- .local/ is never committed. WezTerm reloads its configuration within seconds of a change here.
 
 -- The EDI checkout in WSL (~ is the Linux home). Its docs/images/EDI-darkness.jpg is EDI's face.
 local edi = '~/EDI'

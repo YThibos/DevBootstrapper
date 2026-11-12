@@ -6,7 +6,8 @@
 --   prompt NAME     the tab that answering the Ctrl+t prompt with NAME opens, or "ignored"
 --   startup         the command of the window WezTerm opens at start
 --   font-size       the terminal's font size
---   watched         the files and folders WezTerm watches to reload the configuration
+--   reload CHANGE   whether WezTerm reloads after CHANGE (none, or local: .local/wezterm.lua is
+--                   written) once the check interval has passed
 local repo, home, mode, argument = arg[1], arg[2], arg[3], arg[4]
 
 -- The config reads Windows paths with backslashes; here they are ordinary Linux paths.
@@ -16,7 +17,8 @@ dofile = function(path) return real_dofile((path:gsub('\\', '/'))) end
 
 local handlers = {}
 local spawned = {}
-local watched = {}
+local clock = 1000
+os.time = function() return clock end
 local steps = {}
 local fake = {
   home_dir = '/no/windows/home',
@@ -26,7 +28,6 @@ local fake = {
   action_callback = function(callback) return { action = 'Callback', callback = callback } end,
   on = function(event, handler) handlers[event] = handler end,
   log_info = function() end,
-  add_to_config_reload_watch_list = function(path) watched[#watched + 1] = (path:gsub('\\', '/')) end,
   sleep_ms = function(ms) steps[#steps + 1] = 'pause ' .. ms .. 'ms' end,
   mux = {
     spawn_window = function(command)
@@ -72,10 +73,6 @@ if mode == 'keys' then
   end
 elseif mode == 'face' then
   local handler = handlers['update-status']
-  if not handler then
-    print('no background rules')
-    return
-  end
   local pane = {
     get_title = function() return argument end,
     get_current_working_dir = function() return nil end,
@@ -85,6 +82,7 @@ elseif mode == 'face' then
   }
   local window = {
     window_id = function() return 1 end,
+    perform_action = function() end,
     set_config_overrides = function(_, overrides)
       for _, layer in ipairs(overrides.background or {}) do
         if layer.source.File then print('image=' .. layer.source.File:gsub('\\', '/')) end
@@ -113,6 +111,26 @@ elseif mode == 'startup' then
   print(show(spawned.command.args))
 elseif mode == 'font-size' then
   print(config.font_size)
-elseif mode == 'watched' then
-  for _, path in ipairs(watched) do print(path) end
+elseif mode == 'reload' then
+  local actions = {}
+  local window = {
+    window_id = function() return 1 end,
+    perform_action = function(_, action) actions[#actions + 1] = action.action end,
+    set_config_overrides = function() end,
+  }
+  local pane = { get_title = function() return '' end, get_user_vars = function() return {} end,
+    get_current_working_dir = function() return nil end, get_domain_name = function() return 'WSL:Ubuntu' end,
+    get_foreground_process_name = function() return '' end }
+  if argument == 'local' then
+    local f = assert(real_open(home .. '/development/.local/wezterm.lua', 'a'))
+    f:write('\n-- changed\n')
+    f:close()
+  end
+  local handler = handlers['update-status']
+  handler(window, pane)
+  local early = #actions
+  clock = clock + 5
+  handler(window, pane)
+  handler(window, pane)
+  print('before the interval: ' .. early .. ', after: ' .. table.concat(actions, ' '))
 end

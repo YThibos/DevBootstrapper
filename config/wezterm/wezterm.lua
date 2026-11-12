@@ -57,25 +57,61 @@ local PALETTE = {
 
 -- The machine's own wezterm settings, .local/wezterm.lua in the dev home (example in
 -- .local.example/wezterm.lua); an empty table when there is none.
--- WezTerm watches the file, so a change to it reloads the configuration like a change to this
--- one; while the file does not exist yet, it watches .local/ so the file's arrival reloads too
--- (devup writes it on a fresh install, possibly after WezTerm has started).
+local function local_settings_path(machine)
+  return machine.dev_home_unc and (machine.dev_home_unc .. '\\.local\\wezterm.lua')
+end
+
 local function load_local(machine)
-  if not machine.dev_home_unc then
+  local path = local_settings_path(machine)
+  if not path then
     return {}
   end
-  local folder = machine.dev_home_unc .. '\\.local'
-  local path = folder .. '\\wezterm.lua'
-  local present = io.open(path, 'r')
-  if present then
-    present:close()
-  end
-  pcall(wezterm.add_to_config_reload_watch_list, present and path or folder)
   local ok, result = pcall(dofile, path)
   if ok and type(result) == 'table' then
     return result
   end
   return {}
+end
+
+-- WezTerm's own file watch is blind to the dev home: the \\wsl.localhost share sends Windows no
+-- change notifications. So the configuration checks its files inside WSL every few seconds and
+-- reloads when one changed, appeared or vanished, such as .local/wezterm.lua that devup writes
+-- after WezTerm has started.
+local RELOAD_CHECK_SECONDS = 3
+
+local function read_file(path)
+  local f = io.open(path, 'r')
+  if not f then
+    return false
+  end
+  local text = f:read('a')
+  f:close()
+  return text
+end
+
+-- A function for update-status that reloads the configuration once any of PATHS changed.
+local function reloader(paths)
+  local seen = {}
+  for i, path in ipairs(paths) do
+    seen[i] = read_file(path)
+  end
+  local checked = os.time()
+  return function(window, pane)
+    local now = os.time()
+    if now - checked < RELOAD_CHECK_SECONDS then
+      return
+    end
+    checked = now
+    for i, path in ipairs(paths) do
+      local text = read_file(path)
+      if text ~= seen[i] then
+        seen[i] = text
+        wezterm.log_info('DevBootstrapper: ' .. path .. ' changed, reloading the configuration')
+        window:perform_action(act.ReloadConfiguration, pane)
+        return
+      end
+    end
+  end
 end
 
 local function file_exists(path)
@@ -166,6 +202,7 @@ end
 
 -- Context-aware backgrounds: the first rule in .local/wezterm.lua that matches the active pane
 -- picks the image, and may also set a font and colours; otherwise the default image shows.
+-- Returns the update-status step that switches the look, or nil when no image is available.
 local function backgrounds(config, machine, settings)
   local pictures = settings.pictures or (wezterm.home_dir .. '/Pictures')
   local function locate(name)
@@ -205,7 +242,7 @@ local function backgrounds(config, machine, settings)
   wezterm.log_info('DevBootstrapper backgrounds: default=' .. tostring(default.image) .. ', '
     .. #rules .. ' of ' .. #(settings.rules or {}) .. ' rules with an image')
   if not default.image and #rules == 0 then
-    return
+    return nil
   end
   if default.image then
     config.background = layers(default.image, default)
@@ -233,7 +270,7 @@ local function backgrounds(config, machine, settings)
   end
 
   local shown = {}
-  wezterm.on('update-status', function(window, pane)
+  return function(window, pane)
     local chosen = default
     for _, rule in ipairs(rules) do
       if matches(rule, pane) then
@@ -248,7 +285,7 @@ local function backgrounds(config, machine, settings)
         .. ' shows ' .. tostring(chosen.image))
       window:set_config_overrides(overrides(chosen))
     end
-  end)
+  end
 end
 
 -- The command of a tab that is a tmux session: attach to the session NAME, creating it when it
@@ -360,7 +397,21 @@ function M.build(machine)
   config.initial_rows = 32
   config.window_padding = { left = 8, right = 8, top = 6, bottom = 6 }
 
-  backgrounds(config, machine, settings)
+  local choose_background = backgrounds(config, machine, settings)
+  local watched = {}
+  if machine.config_path then
+    watched[#watched + 1] = machine.config_path
+  end
+  if local_settings_path(machine) then
+    watched[#watched + 1] = local_settings_path(machine)
+  end
+  local reload_when_changed = reloader(watched)
+  wezterm.on('update-status', function(window, pane)
+    reload_when_changed(window, pane)
+    if choose_background then
+      choose_background(window, pane)
+    end
+  end)
 
   -- The DevBootstrapper launcher owns WezTerm updates.
   config.check_for_updates = false
