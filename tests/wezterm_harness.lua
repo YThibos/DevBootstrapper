@@ -5,6 +5,7 @@
 --   face TITLE      the image, font and text colour WezTerm switches to for a pane with that title
 --   prompt NAME     the tab that answering the Ctrl+t prompt with NAME opens, or "ignored"
 --   startup         the command of the window WezTerm opens at start
+--   font-size       the terminal's font size
 --   watched         the files and folders WezTerm watches to reload the configuration
 local repo, home, mode, argument = arg[1], arg[2], arg[3], arg[4]
 
@@ -110,6 +111,8 @@ elseif mode == 'prompt' then
 elseif mode == 'startup' then
   handlers['gui-startup'](nil)
   print(show(spawned.command.args))
+elseif mode == 'font-size' then
+  print(config.font_size)
 elseif mode == 'watched' then
   for _, path in ipairs(watched) do print(path) end
 end

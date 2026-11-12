@@ -40,6 +40,7 @@ When it is missing, `devup` creates it from [.local.example/wezterm.lua](../.loc
   With neither file the rule is skipped and the pane keeps its usual look.
   WezTerm picks the picture when it loads its configuration, so press `Ctrl+Shift+r` once after either file first appears.
   A `.local/wezterm.lua` from before EDI's face moved to the EDI checkout keeps its old rule; `devup` warns about it until you copy the EDI rule from the example.
+- `font_size` sets this machine's font size (default 11.0), for a large, dense screen.
 - Without a matching rule the `default` image shows; without any image the plain palette shows.
 - Edits to `.local/wezterm.lua` reload automatically, and so does the file's first appearance: WezTerm watches the file, or `.local/` until the file exists.
 

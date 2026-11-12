@@ -166,8 +166,7 @@ end
 
 -- Context-aware backgrounds: the first rule in .local/wezterm.lua that matches the active pane
 -- picks the image, and may also set a font and colours; otherwise the default image shows.
-local function backgrounds(config, machine)
-  local settings = load_local(machine)
+local function backgrounds(config, machine, settings)
   local pictures = settings.pictures or (wezterm.home_dir .. '/Pictures')
   local function locate(name)
     if name:find('^%a:') then
@@ -328,6 +327,7 @@ end
 
 function M.build(machine)
   machine = machine or {}
+  local settings = load_local(machine)
   local config = wezterm.config_builder()
   local distro = machine.distro or 'Ubuntu'
   local domain = 'WSL:' .. distro
@@ -345,7 +345,8 @@ function M.build(machine)
   -- Appearance: a soft blue and turquoise palette, Consolas with JetBrains Mono and Nerd Font
   -- symbols (both ship with WezTerm) as fallbacks. Fonts dropped in .local/fonts are found too.
   config.font = wezterm.font_with_fallback { 'Consolas', 'JetBrains Mono', 'Symbols Nerd Font Mono' }
-  config.font_size = 11.0
+  -- A machine with a large, dense screen sets its own size in .local/wezterm.lua (font_size).
+  config.font_size = settings.font_size or 11.0
   if machine.dev_home_unc then
     config.font_dirs = { machine.dev_home_unc .. '\\.local\\fonts' }
   end
@@ -359,7 +360,7 @@ function M.build(machine)
   config.initial_rows = 32
   config.window_padding = { left = 8, right = 8, top = 6, bottom = 6 }
 
-  backgrounds(config, machine)
+  backgrounds(config, machine, settings)
 
   -- The DevBootstrapper launcher owns WezTerm updates.
   config.check_for_updates = false

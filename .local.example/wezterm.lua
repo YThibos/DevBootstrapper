@@ -9,6 +9,9 @@ return {
   -- Default: the Windows Pictures folder of the current user.
   -- pictures = 'C:/Users/me/Pictures',
 
+  -- The terminal's font size on this machine, such as 9.0 on a large, dense screen. Default: 11.0.
+  -- font_size = 9.0,
+
   -- Shown when no rule matches. A missing image is skipped silently.
   default = 'andromeda-darker.jpg',
 

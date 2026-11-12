@@ -57,6 +57,9 @@ edi_title=edi-261104-0853
 image() { harness face "$edi_title" | sed -n 's/^image=//p'; }
 use_settings
 assert_eq "$(harness watched)" "$DEV/.local/wezterm.lua" "a change to .local/wezterm.lua reloads the configuration"
+assert_eq "$(harness font-size)" "11.0" "the font size is 11 by default"
+printf 'font_size = 9.0,\n' >"$SANDBOX/size" && sed -i "/^return {/r $SANDBOX/size" "$DEV/.local/wezterm.lua"
+assert_eq "$(harness font-size)" "9.0" "a machine sets its own font size in .local/wezterm.lua"
 assert_eq "$(harness face "$edi_title")" "no background rules" "without any image the EDI rule is skipped silently"
 mkdir -p "$HOME/EDI/docs/images"
 touch "$HOME/EDI/docs/images/EDI-darkness.jpg"
