@@ -45,3 +45,4 @@ Example: to work on your own tooling from the work laptop, clone it under `sourc
 `.local/git/identities.gitconfig` holds accounts and contexts; it is machine-local because the repository is public.
 `gitid` generates `.local/git/routing.gitconfig` and one file per context from it; `~/.gitconfig` includes them.
 Tokens live only in `.secrets`.
+A GitHub account whose token in `.secrets` is empty uses the GitHub CLI's login for that user instead (`gh auth login`), so no personal access token is needed; `gh auth refresh -h github.com -s <scope>` widens what it may do.

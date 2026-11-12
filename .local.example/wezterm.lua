@@ -1,5 +1,5 @@
 -- Machine WezTerm settings for DevBootstrapper (docs/wezterm.md). Copy to .local/wezterm.lua;
--- .local/ is never committed. Changes apply when WezTerm reloads its configuration (Ctrl+Shift+r).
+-- .local/ is never committed. WezTerm reloads its configuration within seconds of a change here.
 
 -- The EDI checkout in WSL (~ is the Linux home). Its docs/images/EDI-darkness.jpg is EDI's face.
 local edi = '~/EDI'
@@ -8,6 +8,9 @@ return {
   -- Folder holding the images; a name below may also be a full path such as 'C:/images/x.jpg'.
   -- Default: the Windows Pictures folder of the current user.
   -- pictures = 'C:/Users/me/Pictures',
+
+  -- The terminal's font size on this machine, such as 9.0 on a large, dense screen. Default: 11.0.
+  -- font_size = 9.0,
 
   -- Shown when no rule matches. A missing image is skipped silently.
   default = 'andromeda-darker.jpg',

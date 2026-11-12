@@ -57,15 +57,61 @@ local PALETTE = {
 
 -- The machine's own wezterm settings, .local/wezterm.lua in the dev home (example in
 -- .local.example/wezterm.lua); an empty table when there is none.
+local function local_settings_path(machine)
+  return machine.dev_home_unc and (machine.dev_home_unc .. '\\.local\\wezterm.lua')
+end
+
 local function load_local(machine)
-  if not machine.dev_home_unc then
+  local path = local_settings_path(machine)
+  if not path then
     return {}
   end
-  local ok, result = pcall(dofile, machine.dev_home_unc .. '\\.local\\wezterm.lua')
+  local ok, result = pcall(dofile, path)
   if ok and type(result) == 'table' then
     return result
   end
   return {}
+end
+
+-- WezTerm's own file watch is blind to the dev home: the \\wsl.localhost share sends Windows no
+-- change notifications. So the configuration checks its files inside WSL every few seconds and
+-- reloads when one changed, appeared or vanished, such as .local/wezterm.lua that devup writes
+-- after WezTerm has started.
+local RELOAD_CHECK_SECONDS = 3
+
+local function read_file(path)
+  local f = io.open(path, 'r')
+  if not f then
+    return false
+  end
+  local text = f:read('a')
+  f:close()
+  return text
+end
+
+-- A function for update-status that reloads the configuration once any of PATHS changed.
+local function reloader(paths)
+  local seen = {}
+  for i, path in ipairs(paths) do
+    seen[i] = read_file(path)
+  end
+  local checked = os.time()
+  return function(window, pane)
+    local now = os.time()
+    if now - checked < RELOAD_CHECK_SECONDS then
+      return
+    end
+    checked = now
+    for i, path in ipairs(paths) do
+      local text = read_file(path)
+      if text ~= seen[i] then
+        seen[i] = text
+        wezterm.log_info('DevBootstrapper: ' .. path .. ' changed, reloading the configuration')
+        window:perform_action(act.ReloadConfiguration, pane)
+        return
+      end
+    end
+  end
 end
 
 local function file_exists(path)
@@ -156,8 +202,8 @@ end
 
 -- Context-aware backgrounds: the first rule in .local/wezterm.lua that matches the active pane
 -- picks the image, and may also set a font and colours; otherwise the default image shows.
-local function backgrounds(config, machine)
-  local settings = load_local(machine)
+-- Returns the update-status step that switches the look, or nil when no image is available.
+local function backgrounds(config, machine, settings)
   local pictures = settings.pictures or (wezterm.home_dir .. '/Pictures')
   local function locate(name)
     if name:find('^%a:') then
@@ -191,8 +237,12 @@ local function backgrounds(config, machine)
       table.insert(rules, copy)
     end
   end
+  -- What the configuration resolved, in WezTerm's log (%USERPROFILE%\.local\share\wezterm), so a
+  -- missing picture or a rule that never matches can be traced from inside WSL.
+  wezterm.log_info('DevBootstrapper backgrounds: default=' .. tostring(default.image) .. ', '
+    .. #rules .. ' of ' .. #(settings.rules or {}) .. ' rules with an image')
   if not default.image and #rules == 0 then
-    return
+    return nil
   end
   if default.image then
     config.background = layers(default.image, default)
@@ -220,7 +270,7 @@ local function backgrounds(config, machine)
   end
 
   local shown = {}
-  wezterm.on('update-status', function(window, pane)
+  return function(window, pane)
     local chosen = default
     for _, rule in ipairs(rules) do
       if matches(rule, pane) then
@@ -231,9 +281,11 @@ local function backgrounds(config, machine)
     local id = window:window_id()
     if shown[id] ~= chosen then
       shown[id] = chosen
+      wezterm.log_info('DevBootstrapper backgrounds: pane title ' .. string.format('%q', pane:get_title() or '')
+        .. ' shows ' .. tostring(chosen.image))
       window:set_config_overrides(overrides(chosen))
     end
-  end)
+  end
 end
 
 -- The command of a tab that is a tmux session: attach to the session NAME, creating it when it
@@ -258,28 +310,54 @@ local function tmux(command)
   end)
 end
 
--- Ctrl+t: asks for a name and opens that tmux session in a new tab. Names are limited to
+-- The tmux sessions running in the WSL distribution, one line each with "(attached)" after a
+-- session a terminal shows; empty when WSL or tmux does not answer.
+local function tmux_sessions(distro)
+  local ok, success, out = pcall(wezterm.run_child_process, {
+    'wsl.exe', '-d', distro, '--', 'bash', '-lc',
+    'tmux list-sessions -F "#S#{?session_attached, (attached),}" 2>/dev/null',
+  })
+  local sessions = {}
+  if ok and success and out then
+    for line in out:gmatch('[^\r\n]+') do
+      sessions[#sessions + 1] = line
+    end
+  end
+  return sessions
+end
+
+-- Ctrl+t: lists the running tmux sessions, asks for a name and opens that tmux session in a new
+-- tab: a running session's name attaches to it, a new name starts one. Names are limited to
 -- characters tmux accepts in a session name, which also keeps them from injecting commands.
 local function new_session_prompt(domain)
-  return act.PromptInputLine {
-    description = 'New tmux session name:',
-    action = wezterm.action_callback(function(window, pane, name)
-      if not name or not name:match('^[%w_%-]+$') then
-        return
-      end
-      window:perform_action(
-        act.SpawnCommandInNewTab { domain = { DomainName = domain }, args = tmux_session_args(name) },
-        pane
-      )
-    end),
-  }
+  local distro = domain:match('^WSL:(.+)$') or domain
+  return wezterm.action_callback(function(window, pane)
+    local sessions = tmux_sessions(distro)
+    local description = 'tmux session to open (a new name starts one):'
+    if #sessions > 0 then
+      description = 'Running tmux sessions:\n  ' .. table.concat(sessions, '\n  ') .. '\n\n'
+        .. 'tmux session to open (a running name attaches, a new name starts one):'
+    end
+    window:perform_action(act.PromptInputLine {
+      description = description,
+      action = wezterm.action_callback(function(prompt_window, prompt_pane, name)
+        if not name or not name:match('^[%w_%-]+$') then
+          return
+        end
+        prompt_window:perform_action(
+          act.SpawnCommandInNewTab { domain = { DomainName = domain }, args = tmux_session_args(name) },
+          prompt_pane
+        )
+      end),
+    }, pane)
+  end)
 end
 
 -- The key model: a WezTerm tab is a tmux session, and splits and screens inside a tab are tmux
 -- panes and windows (docs/wezterm.md).
 local function tmux_keys(domain)
   local keys = {
-    --: Ctrl+t | new tab: asks for a name, opens that tmux session
+    --: Ctrl+t | new tab: lists the running tmux sessions, asks for a name, opens that session
     { key = 't', mods = 'CTRL', action = new_session_prompt(domain) },
     --: Alt+Enter / Alt+Shift+Enter | split the tmux pane beside / below
     { key = 'Enter', mods = 'ALT', action = tmux('split-window -h') },
@@ -312,6 +390,7 @@ end
 
 function M.build(machine)
   machine = machine or {}
+  local settings = load_local(machine)
   local config = wezterm.config_builder()
   local distro = machine.distro or 'Ubuntu'
   local domain = 'WSL:' .. distro
@@ -329,7 +408,8 @@ function M.build(machine)
   -- Appearance: a soft blue and turquoise palette, Consolas with JetBrains Mono and Nerd Font
   -- symbols (both ship with WezTerm) as fallbacks. Fonts dropped in .local/fonts are found too.
   config.font = wezterm.font_with_fallback { 'Consolas', 'JetBrains Mono', 'Symbols Nerd Font Mono' }
-  config.font_size = 11.0
+  -- A machine with a large, dense screen sets its own size in .local/wezterm.lua (font_size).
+  config.font_size = settings.font_size or 11.0
   if machine.dev_home_unc then
     config.font_dirs = { machine.dev_home_unc .. '\\.local\\fonts' }
   end
@@ -343,7 +423,21 @@ function M.build(machine)
   config.initial_rows = 32
   config.window_padding = { left = 8, right = 8, top = 6, bottom = 6 }
 
-  backgrounds(config, machine)
+  local choose_background = backgrounds(config, machine, settings)
+  local watched = {}
+  if machine.config_path then
+    watched[#watched + 1] = machine.config_path
+  end
+  if local_settings_path(machine) then
+    watched[#watched + 1] = local_settings_path(machine)
+  end
+  local reload_when_changed = reloader(watched)
+  wezterm.on('update-status', function(window, pane)
+    reload_when_changed(window, pane)
+    if choose_background then
+      choose_background(window, pane)
+    end
+  end)
 
   -- The DevBootstrapper launcher owns WezTerm updates.
   config.check_for_updates = false

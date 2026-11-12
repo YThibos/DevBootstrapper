@@ -2,9 +2,9 @@
 
 ## Where tools come from
 
-1. **mise**, whenever it offers a prebuilt binary: Java (Temurin 8, 11, 17, 21, 25), Maven 3.10, mvnd, Gradle, Node LTS with npm, the Angular CLI, Python, uv, Claude Code, gh, glab, jq, yq, ripgrep, fd, fzf, bat, eza, zoxide, delta, lazygit, lazydocker, starship, xh, glow, shellcheck, shfmt and tmux.
+1. **mise**, whenever it offers a prebuilt binary: Java (Temurin 8, 11, 17, 21, 25), Maven 3.10, mvnd, Gradle, Node LTS with npm, the Angular CLI, Python, uv, Claude Code, gh, glab, jq, yq, ripgrep, fd, fzf, bat, eza, zoxide, delta, lazygit, lazydocker, starship, xh, glow, shellcheck, shfmt, tmux and no-mistakes (the validation pipeline EDI's workers run, from its GitHub releases).
    They install into `~/development/tools/mise`.
-2. **apt**, for the rest: git (from the git-core PPA when it has a build for your Ubuntu release), build tools (with the zlib headers GraalVM Native Image links against), curl and a few basics.
+2. **apt**, for the rest: git (from the git-core PPA when it has a build for your Ubuntu release), build tools (with the zlib headers GraalVM Native Image links against), Lua 5.4 (`lua5.4`, for the WezTerm configuration's tests), curl and a few basics.
    See `install/apt-packages.txt`; a package your Ubuntu release no longer offers is skipped with a warning.
    Opening links and files in Windows needs no package: `winopen` (also `open`) calls Windows directly and is the `BROWSER` inside WSL.
 3. **Their own platform**: Docker comes from Docker Desktop's WSL integration; WezTerm from its nightly zip via the launcher.

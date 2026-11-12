@@ -4,7 +4,12 @@
 --   keys            one line per key: MODS+KEY ACTION ARGUMENT, or for a callback key what it does in order
 --   face TITLE      the image, font and text colour WezTerm switches to for a pane with that title
 --   prompt NAME     the tab that answering the Ctrl+t prompt with NAME opens, or "ignored"
+--   prompt-text     the Ctrl+t prompt's text; HARNESS_TMUX_SESSIONS holds what tmux lists, unset
+--                   when WSL does not answer
 --   startup         the command of the window WezTerm opens at start
+--   font-size       the terminal's font size
+--   reload CHANGE   whether WezTerm reloads after CHANGE (none, or local: .local/wezterm.lua is
+--                   written) once the check interval has passed
 local repo, home, mode, argument = arg[1], arg[2], arg[3], arg[4]
 
 -- The config reads Windows paths with backslashes; here they are ordinary Linux paths.
@@ -14,6 +19,8 @@ dofile = function(path) return real_dofile((path:gsub('\\', '/'))) end
 
 local handlers = {}
 local spawned = {}
+local clock = 1000
+os.time = function() return clock end
 local steps = {}
 local fake = {
   home_dir = '/no/windows/home',
@@ -22,6 +29,12 @@ local fake = {
   font_with_fallback = function(families) return { families = families } end,
   action_callback = function(callback) return { action = 'Callback', callback = callback } end,
   on = function(event, handler) handlers[event] = handler end,
+  log_info = function() end,
+  run_child_process = function(args)
+    local listed = os.getenv('HARNESS_TMUX_SESSIONS')
+    if not listed then return false, '', 'no WSL' end
+    return true, (listed:gsub('|', '\n')), ''
+  end,
   sleep_ms = function(ms) steps[#steps + 1] = 'pause ' .. ms .. 'ms' end,
   mux = {
     spawn_window = function(command)
@@ -67,10 +80,6 @@ if mode == 'keys' then
   end
 elseif mode == 'face' then
   local handler = handlers['update-status']
-  if not handler then
-    print('no background rules')
-    return
-  end
   local pane = {
     get_title = function() return argument end,
     get_current_working_dir = function() return nil end,
@@ -80,6 +89,7 @@ elseif mode == 'face' then
   }
   local window = {
     window_id = function() return 1 end,
+    perform_action = function() end,
     set_config_overrides = function(_, overrides)
       for _, layer in ipairs(overrides.background or {}) do
         if layer.source.File then print('image=' .. layer.source.File:gsub('\\', '/')) end
@@ -89,7 +99,7 @@ elseif mode == 'face' then
     end,
   }
   handler(window, pane)
-elseif mode == 'prompt' then
+elseif mode == 'prompt' or mode == 'prompt-text' then
   for _, key in ipairs(config.keys) do
     if key.key == 't' and key.mods == 'CTRL' then
       local window = {
@@ -98,12 +108,42 @@ elseif mode == 'prompt' then
           print(string.format('%s domain=%s %s', action.action, action.arg.domain.DomainName, show(action.arg.args)))
         end,
       }
-      local before = #spawned
-      key.action.arg.action.callback(window, {}, argument ~= '' and argument or nil)
-      if #spawned == before then print('ignored') end
+      local prompt
+      key.action.callback({ perform_action = function(_, action) prompt = action end }, {})
+      if mode == 'prompt-text' then
+        print(prompt.arg.description)
+      else
+        local before = #spawned
+        prompt.arg.action.callback(window, {}, argument ~= '' and argument or nil)
+        if #spawned == before then print('ignored') end
+      end
     end
   end
 elseif mode == 'startup' then
   handlers['gui-startup'](nil)
   print(show(spawned.command.args))
+elseif mode == 'font-size' then
+  print(config.font_size)
+elseif mode == 'reload' then
+  local actions = {}
+  local window = {
+    window_id = function() return 1 end,
+    perform_action = function(_, action) actions[#actions + 1] = action.action end,
+    set_config_overrides = function() end,
+  }
+  local pane = { get_title = function() return '' end, get_user_vars = function() return {} end,
+    get_current_working_dir = function() return nil end, get_domain_name = function() return 'WSL:Ubuntu' end,
+    get_foreground_process_name = function() return '' end }
+  if argument == 'local' then
+    local f = assert(real_open(home .. '/development/.local/wezterm.lua', 'a'))
+    f:write('\n-- changed\n')
+    f:close()
+  end
+  local handler = handlers['update-status']
+  handler(window, pane)
+  local early = #actions
+  clock = clock + 5
+  handler(window, pane)
+  handler(window, pane)
+  print('before the interval: ' .. early .. ', after: ' .. table.concat(actions, ' '))
 end

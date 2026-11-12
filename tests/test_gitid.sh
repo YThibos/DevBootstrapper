@@ -74,8 +74,13 @@ assert_contains "$(cat "$HOME/ssh-args" 2>/dev/null)" "-i $HOME/.ssh/id_test_git
 (cd "$DEV/sources/home/tooling" && run git ls-remote git@gitlab.example.org:grp/x.git >/dev/null 2>&1)
 assert_not_contains "$(cat "$HOME/ssh-args" 2>/dev/null)" "-i " "git over SSH without an SSH account uses plain ssh"
 
-# gh and glab wrappers: stand-ins print the credentials they receive.
-printf '#!/usr/bin/env bash\necho "token=${GH_TOKEN:-}"\n' >"$FAKEBIN/gh"
+# gh and glab wrappers: stand-ins print the credentials they receive; the gh stand-in also
+# answers `gh auth token -h HOST -u USER` with a token of its own login.
+cat >"$FAKEBIN/gh" <<'GH'
+#!/usr/bin/env bash
+if [ "$1 $2" = "auth token" ]; then echo "tok-gh-login-$4-$6"; exit 0; fi
+echo "token=${GH_TOKEN:-}"
+GH
 printf '#!/usr/bin/env bash\necho "host=${GITLAB_HOST:-} token=${GITLAB_TOKEN:-}"\n' >"$FAKEBIN/glab"
 chmod +x "$FAKEBIN/gh" "$FAKEBIN/glab"
 assert_eq "$(cd "$DEV/sources/home/tooling" && run gh)" token=tok-personal "gh in sources/home runs as the personal account"
@@ -83,6 +88,12 @@ assert_eq "$(cd "$DEV/sources/work/service" && run gh)" token=tok-work "gh in so
 assert_eq "$(cd "$DEV/sources/work/service" && run "$DEV/bin/gitid" as github-personal -- gh)" token=tok-personal "gitid as works for gh"
 assert_eq "$(cd "$DEV/sources/work/service" && run glab)" "host=gitlab.example.org token=tok-gitlab" "glab in sources/work runs as the work GitLab account"
 assert_eq "$(cd "$DEV/sources/home/tooling" && run glab)" "host= token=" "glab where no GitLab account applies gets no token"
+
+# A GitHub account without a token in .secrets borrows the GitHub CLI's login for its user.
+sed -i 's/^GITHUB_PERSONAL_TOKEN=tok-personal$/GITHUB_PERSONAL_TOKEN=/' "$DEV/.secrets"
+assert_eq "$(cred "$DEV/sources/home/tooling" github.com)" tok-gh-login-github.com-me-personal "git credentials without a token: the gh login of the account's user"
+sed -i 's/^GITHUB_PERSONAL_TOKEN=$/GITHUB_PERSONAL_TOKEN=tok-personal/' "$DEV/.secrets"
+assert_eq "$(cred "$DEV/sources/home/tooling" github.com)" tok-personal "a token in .secrets still wins over the gh login"
 
 # One account per host per context.
 g link work github-personal >/dev/null 2>&1

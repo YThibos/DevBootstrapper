@@ -2,7 +2,7 @@
 
 WezTerm runs from `C:\development\tools\wezterm`.
 Next to `wezterm.exe` sits a small stub `wezterm.lua` that loads the real configuration from `~/development/config/wezterm/wezterm.lua` inside WSL, with a minimal WSL-first fallback when WSL is not reachable.
-Edits to the real configuration reload automatically.
+Edits to the real configuration reload within a few seconds (see below: the configuration checks its own files, as WezTerm cannot watch inside WSL).
 
 - New tabs open in your Ubuntu distribution, in `~/development`.
 - `Alt+Shift+l` opens the launcher with PowerShell and Command Prompt.
@@ -32,6 +32,7 @@ When it is missing, `devup` creates it from [.local.example/wezterm.lua](../.loc
 - An image is a file in the Windows Pictures folder, or in the folder `pictures` names, a Windows path, a Linux path (`~` is your Linux home), or a list of these of which the first existing file wins.
 - A rule whose images are all missing is skipped without a message.
 - The first rule that matches wins: a pane title pattern (`title`), an ssh session (`ssh = true`) or a fragment of the current directory (`cwd`).
+  Inside tmux the title is the session name: the tmux configuration turns `set-titles` on for every session.
 - A rule may also set a font and colours, so a pane can change its whole look, such as an agent's session recognised by its title.
 - EDI's face is such a rule: while a tmux session named `edi-<yymmdd>-<hhmm>` is attached, the pane shows Fira Code in dark cyan text, a bright cyan cursor and a deep teal selection, over a black underlay with the picture fitted whole on top.
   The picture is `~/.edi/state/wallpaper.png` when EDI has made one, otherwise `docs/images/EDI-darkness.jpg` in the EDI checkout.
@@ -39,8 +40,9 @@ When it is missing, `devup` creates it from [.local.example/wezterm.lua](../.loc
   With neither file the rule is skipped and the pane keeps its usual look.
   WezTerm picks the picture when it loads its configuration, so press `Ctrl+Shift+r` once after either file first appears.
   A `.local/wezterm.lua` from before EDI's face moved to the EDI checkout keeps its old rule; `devup` warns about it until you copy the EDI rule from the example.
+- `font_size` sets this machine's font size (default 11.0), for a large, dense screen.
 - Without a matching rule the `default` image shows; without any image the plain palette shows.
-- Edits apply on `Ctrl+Shift+r`.
+- Edits to `.local/wezterm.lua` reload within a few seconds, and so does the file's first appearance. WezTerm's own file watch cannot see inside WSL, so the configuration checks its files every three seconds.
 
 WezTerm cannot see processes inside WSL, so the shell tells it where it is: [bash/tools/wezterm.sh](../bash/tools/wezterm.sh) sends the current directory (OSC 7) at every prompt and wraps `ssh` to mark the pane while it runs.
 The next prompt clears the mark, also after an ssh that was interrupted before it returned.

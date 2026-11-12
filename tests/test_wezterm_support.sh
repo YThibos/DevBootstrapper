@@ -19,6 +19,7 @@ assert_not_contains "$out" "EDI's face" "with the current EDI rule"
 assert_eq "$(readlink "$HOME/.tmux.conf")" "$DEV/.local/tmux/tmux.conf" "~/.tmux.conf is the file that is linked"
 assert_contains "$(tmux_conf)" 'set -g default-command "zsh -l"' "tmux starts zsh as a login shell when opted in"
 assert_contains "$(tmux_conf)" "set -g allow-passthrough on" "tmux lets the shell talk to WezTerm"
+assert_contains "$(tmux_conf)" 'set -g set-titles-string "#S"' "tmux titles the terminal with the session name, which WezTerm's rules match"
 assert_not_contains "$(tmux_conf)" "{{" "no template placeholder is left in the rendered file"
 printf 'DEV_SHELL=bash\n' >"$DEV/.local/profile.env"
 devup --only render >/dev/null

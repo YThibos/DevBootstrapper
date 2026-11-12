@@ -18,4 +18,6 @@ bash-completion
 less
 file
 openssh-client
+# Lua 5.4: runs the WezTerm configuration's tests (tests/test_wezterm_config.sh) and checks Lua syntax.
+lua5.4
 zsh [zsh]

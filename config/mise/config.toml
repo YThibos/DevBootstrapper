@@ -35,6 +35,8 @@ glow = "latest"
 shellcheck = "latest"
 shfmt = "latest"
 tmux = "latest"
+# The validation pipeline EDI's workers run before a draft opens (github.com/kunchenguid/no-mistakes).
+"github:kunchenguid/no-mistakes" = "latest"
 
 [settings]
 # Use prebuilt Python builds, never compile from source.
