@@ -47,6 +47,12 @@ assert_not_contains "$(harness prompt work)" ignored "and is not reported as ign
 assert_eq "$(harness prompt 'a b')" ignored "a name with a space is ignored"
 assert_eq "$(harness prompt 'x;reboot')" ignored "a name that could inject a command is ignored"
 assert_eq "$(harness prompt a.b)" ignored "a name tmux would reject is ignored"
+text=$(HARNESS_TMUX_SESSIONS='main|edi-261112-1642 (attached)' harness prompt-text)
+assert_contains "$text" "Running tmux sessions:" "Ctrl+t lists the running tmux sessions"
+assert_contains "$text" "  main" "with each session on its own line"
+assert_contains "$text" "  edi-261112-1642 (attached)" "marking the sessions a terminal shows"
+assert_eq "$(HARNESS_TMUX_SESSIONS='' harness prompt-text)" "tmux session to open (a new name starts one):" "without running sessions it only asks for a name"
+assert_eq "$(harness prompt-text)" "tmux session to open (a new name starts one):" "and when WSL does not answer"
 assert_contains "$(harness startup)" "exec tmux new-session -A -s main" "the first window is the tmux session main"
 
 # Reloading: WezTerm cannot watch files inside WSL, so the configuration checks them itself.

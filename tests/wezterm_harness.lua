@@ -4,6 +4,8 @@
 --   keys            one line per key: MODS+KEY ACTION ARGUMENT, or for a callback key what it does in order
 --   face TITLE      the image, font and text colour WezTerm switches to for a pane with that title
 --   prompt NAME     the tab that answering the Ctrl+t prompt with NAME opens, or "ignored"
+--   prompt-text     the Ctrl+t prompt's text; HARNESS_TMUX_SESSIONS holds what tmux lists, unset
+--                   when WSL does not answer
 --   startup         the command of the window WezTerm opens at start
 --   font-size       the terminal's font size
 --   reload CHANGE   whether WezTerm reloads after CHANGE (none, or local: .local/wezterm.lua is
@@ -28,6 +30,11 @@ local fake = {
   action_callback = function(callback) return { action = 'Callback', callback = callback } end,
   on = function(event, handler) handlers[event] = handler end,
   log_info = function() end,
+  run_child_process = function(args)
+    local listed = os.getenv('HARNESS_TMUX_SESSIONS')
+    if not listed then return false, '', 'no WSL' end
+    return true, (listed:gsub('|', '\n')), ''
+  end,
   sleep_ms = function(ms) steps[#steps + 1] = 'pause ' .. ms .. 'ms' end,
   mux = {
     spawn_window = function(command)
@@ -92,7 +99,7 @@ elseif mode == 'face' then
     end,
   }
   handler(window, pane)
-elseif mode == 'prompt' then
+elseif mode == 'prompt' or mode == 'prompt-text' then
   for _, key in ipairs(config.keys) do
     if key.key == 't' and key.mods == 'CTRL' then
       local window = {
@@ -101,9 +108,15 @@ elseif mode == 'prompt' then
           print(string.format('%s domain=%s %s', action.action, action.arg.domain.DomainName, show(action.arg.args)))
         end,
       }
-      local before = #spawned
-      key.action.arg.action.callback(window, {}, argument ~= '' and argument or nil)
-      if #spawned == before then print('ignored') end
+      local prompt
+      key.action.callback({ perform_action = function(_, action) prompt = action end }, {})
+      if mode == 'prompt-text' then
+        print(prompt.arg.description)
+      else
+        local before = #spawned
+        prompt.arg.action.callback(window, {}, argument ~= '' and argument or nil)
+        if #spawned == before then print('ignored') end
+      end
     end
   end
 elseif mode == 'startup' then

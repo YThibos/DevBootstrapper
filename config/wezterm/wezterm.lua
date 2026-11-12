@@ -310,28 +310,54 @@ local function tmux(command)
   end)
 end
 
--- Ctrl+t: asks for a name and opens that tmux session in a new tab. Names are limited to
+-- The tmux sessions running in the WSL distribution, one line each with "(attached)" after a
+-- session a terminal shows; empty when WSL or tmux does not answer.
+local function tmux_sessions(distro)
+  local ok, success, out = pcall(wezterm.run_child_process, {
+    'wsl.exe', '-d', distro, '--', 'bash', '-lc',
+    'tmux list-sessions -F "#S#{?session_attached, (attached),}" 2>/dev/null',
+  })
+  local sessions = {}
+  if ok and success and out then
+    for line in out:gmatch('[^\r\n]+') do
+      sessions[#sessions + 1] = line
+    end
+  end
+  return sessions
+end
+
+-- Ctrl+t: lists the running tmux sessions, asks for a name and opens that tmux session in a new
+-- tab: a running session's name attaches to it, a new name starts one. Names are limited to
 -- characters tmux accepts in a session name, which also keeps them from injecting commands.
 local function new_session_prompt(domain)
-  return act.PromptInputLine {
-    description = 'New tmux session name:',
-    action = wezterm.action_callback(function(window, pane, name)
-      if not name or not name:match('^[%w_%-]+$') then
-        return
-      end
-      window:perform_action(
-        act.SpawnCommandInNewTab { domain = { DomainName = domain }, args = tmux_session_args(name) },
-        pane
-      )
-    end),
-  }
+  local distro = domain:match('^WSL:(.+)$') or domain
+  return wezterm.action_callback(function(window, pane)
+    local sessions = tmux_sessions(distro)
+    local description = 'tmux session to open (a new name starts one):'
+    if #sessions > 0 then
+      description = 'Running tmux sessions:\n  ' .. table.concat(sessions, '\n  ') .. '\n\n'
+        .. 'tmux session to open (a running name attaches, a new name starts one):'
+    end
+    window:perform_action(act.PromptInputLine {
+      description = description,
+      action = wezterm.action_callback(function(prompt_window, prompt_pane, name)
+        if not name or not name:match('^[%w_%-]+$') then
+          return
+        end
+        prompt_window:perform_action(
+          act.SpawnCommandInNewTab { domain = { DomainName = domain }, args = tmux_session_args(name) },
+          prompt_pane
+        )
+      end),
+    }, pane)
+  end)
 end
 
 -- The key model: a WezTerm tab is a tmux session, and splits and screens inside a tab are tmux
 -- panes and windows (docs/wezterm.md).
 local function tmux_keys(domain)
   local keys = {
-    --: Ctrl+t | new tab: asks for a name, opens that tmux session
+    --: Ctrl+t | new tab: lists the running tmux sessions, asks for a name, opens that session
     { key = 't', mods = 'CTRL', action = new_session_prompt(domain) },
     --: Alt+Enter / Alt+Shift+Enter | split the tmux pane beside / below
     { key = 'Enter', mods = 'ALT', action = tmux('split-window -h') },
