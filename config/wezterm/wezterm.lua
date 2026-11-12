@@ -57,11 +57,21 @@ local PALETTE = {
 
 -- The machine's own wezterm settings, .local/wezterm.lua in the dev home (example in
 -- .local.example/wezterm.lua); an empty table when there is none.
+-- WezTerm watches the file, so a change to it reloads the configuration like a change to this
+-- one; while the file does not exist yet, it watches .local/ so the file's arrival reloads too
+-- (devup writes it on a fresh install, possibly after WezTerm has started).
 local function load_local(machine)
   if not machine.dev_home_unc then
     return {}
   end
-  local ok, result = pcall(dofile, machine.dev_home_unc .. '\\.local\\wezterm.lua')
+  local folder = machine.dev_home_unc .. '\\.local'
+  local path = folder .. '\\wezterm.lua'
+  local present = io.open(path, 'r')
+  if present then
+    present:close()
+  end
+  pcall(wezterm.add_to_config_reload_watch_list, present and path or folder)
+  local ok, result = pcall(dofile, path)
   if ok and type(result) == 'table' then
     return result
   end
@@ -191,6 +201,10 @@ local function backgrounds(config, machine)
       table.insert(rules, copy)
     end
   end
+  -- What the configuration resolved, in WezTerm's log (%USERPROFILE%\.local\share\wezterm), so a
+  -- missing picture or a rule that never matches can be traced from inside WSL.
+  wezterm.log_info('DevBootstrapper backgrounds: default=' .. tostring(default.image) .. ', '
+    .. #rules .. ' of ' .. #(settings.rules or {}) .. ' rules with an image')
   if not default.image and #rules == 0 then
     return
   end
@@ -231,6 +245,8 @@ local function backgrounds(config, machine)
     local id = window:window_id()
     if shown[id] ~= chosen then
       shown[id] = chosen
+      wezterm.log_info('DevBootstrapper backgrounds: pane title ' .. string.format('%q', pane:get_title() or '')
+        .. ' shows ' .. tostring(chosen.image))
       window:set_config_overrides(overrides(chosen))
     end
   end)

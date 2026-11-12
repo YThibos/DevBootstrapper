@@ -49,10 +49,14 @@ assert_eq "$(harness prompt 'x;reboot')" ignored "a name that could inject a com
 assert_eq "$(harness prompt a.b)" ignored "a name tmux would reject is ignored"
 assert_contains "$(harness startup)" "exec tmux new-session -A -s main" "the first window is the tmux session main"
 
+# Reloading: the machine's settings file is watched, or its folder until the file exists.
+assert_eq "$(harness watched)" "$DEV/.local" "without .local/wezterm.lua its folder is watched, so the file's arrival reloads"
+
 # EDI's face.
 edi_title=edi-261104-0853
 image() { harness face "$edi_title" | sed -n 's/^image=//p'; }
 use_settings
+assert_eq "$(harness watched)" "$DEV/.local/wezterm.lua" "a change to .local/wezterm.lua reloads the configuration"
 assert_eq "$(harness face "$edi_title")" "no background rules" "without any image the EDI rule is skipped silently"
 mkdir -p "$HOME/EDI/docs/images"
 touch "$HOME/EDI/docs/images/EDI-darkness.jpg"

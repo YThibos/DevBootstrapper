@@ -5,6 +5,7 @@
 --   face TITLE      the image, font and text colour WezTerm switches to for a pane with that title
 --   prompt NAME     the tab that answering the Ctrl+t prompt with NAME opens, or "ignored"
 --   startup         the command of the window WezTerm opens at start
+--   watched         the files and folders WezTerm watches to reload the configuration
 local repo, home, mode, argument = arg[1], arg[2], arg[3], arg[4]
 
 -- The config reads Windows paths with backslashes; here they are ordinary Linux paths.
@@ -14,6 +15,7 @@ dofile = function(path) return real_dofile((path:gsub('\\', '/'))) end
 
 local handlers = {}
 local spawned = {}
+local watched = {}
 local steps = {}
 local fake = {
   home_dir = '/no/windows/home',
@@ -22,6 +24,8 @@ local fake = {
   font_with_fallback = function(families) return { families = families } end,
   action_callback = function(callback) return { action = 'Callback', callback = callback } end,
   on = function(event, handler) handlers[event] = handler end,
+  log_info = function() end,
+  add_to_config_reload_watch_list = function(path) watched[#watched + 1] = (path:gsub('\\', '/')) end,
   sleep_ms = function(ms) steps[#steps + 1] = 'pause ' .. ms .. 'ms' end,
   mux = {
     spawn_window = function(command)
@@ -106,4 +110,6 @@ elseif mode == 'prompt' then
 elseif mode == 'startup' then
   handlers['gui-startup'](nil)
   print(show(spawned.command.args))
+elseif mode == 'watched' then
+  for _, path in ipairs(watched) do print(path) end
 end
