@@ -3,6 +3,8 @@
 -- Usage: lua5.4 wezterm_harness.lua REPO HOME MODE [ARGUMENT]
 --   keys            one line per key: MODS+KEY ACTION ARGUMENT, or for a callback key what it does in order
 --   face TITLE      the image, font and text colour WezTerm switches to for a pane with that title
+--   titles T1|T2..  one line per title the pane takes in turn: the image its window shows after it
+--   tabs ID:T1|ID:T2  one line per pane brought to the front in turn, ID naming the pane and T its title
 --   prompt NAME     the tab that answering the Ctrl+t prompt with NAME opens, or "ignored"
 --   prompt-text     the Ctrl+t prompt's text; HARNESS_TMUX_SESSIONS holds what tmux lists, unset
 --                   when WSL does not answer
@@ -78,27 +80,48 @@ if mode == 'keys' then
     local shown = action.action == 'Callback' and performed(action.callback) or action.action .. ' ' .. show(action.arg)
     print(string.format('%s+%s %s', key.mods, key.key, shown))
   end
-elseif mode == 'face' then
+elseif mode == 'face' or mode == 'titles' or mode == 'tabs' then
   local handler = handlers['update-status']
+  local title, pane_id = '', 1
   local pane = {
-    get_title = function() return argument end,
+    pane_id = function() return pane_id end,
+    get_title = function() return title end,
     get_current_working_dir = function() return nil end,
     get_user_vars = function() return {} end,
     get_domain_name = function() return 'WSL:Ubuntu' end,
     get_foreground_process_name = function() return '' end,
   }
+  local shown = 'none'
+  local verbose = mode == 'face'
   local window = {
     window_id = function() return 1 end,
     perform_action = function() end,
     set_config_overrides = function(_, overrides)
+      shown = 'none'
       for _, layer in ipairs(overrides.background or {}) do
-        if layer.source.File then print('image=' .. layer.source.File:gsub('\\', '/')) end
+        if layer.source.File then shown = layer.source.File:gsub('\\', '/') end
       end
-      if overrides.font then print('font=' .. show(overrides.font.families)) end
-      if overrides.colors then print('foreground=' .. overrides.colors.foreground) end
+      if verbose then
+        if shown ~= 'none' then print('image=' .. shown) end
+        if overrides.font then print('font=' .. show(overrides.font.families)) end
+        if overrides.colors then print('foreground=' .. overrides.colors.foreground) end
+      end
     end,
   }
-  handler(window, pane)
+  if mode == 'face' then
+    title = argument
+    handler(window, pane)
+  else
+    for step in (argument .. '|'):gmatch('([^|]*)|') do
+      if mode == 'tabs' then
+        pane_id, title = step:match('^(%d+):(.*)$')
+      else
+        title = step
+      end
+      handler(window, pane)
+      print(shown)
+    end
+  end
 elseif mode == 'prompt' or mode == 'prompt-text' then
   for _, key in ipairs(config.keys) do
     if key.key == 't' and key.mods == 'CTRL' then
@@ -131,7 +154,7 @@ elseif mode == 'reload' then
     perform_action = function(_, action) actions[#actions + 1] = action.action end,
     set_config_overrides = function() end,
   }
-  local pane = { get_title = function() return '' end, get_user_vars = function() return {} end,
+  local pane = { pane_id = function() return 1 end, get_title = function() return '' end, get_user_vars = function() return {} end,
     get_current_working_dir = function() return nil end, get_domain_name = function() return 'WSL:Ubuntu' end,
     get_foreground_process_name = function() return '' end }
   if argument == 'local' then

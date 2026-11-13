@@ -33,6 +33,10 @@ When it is missing, `devup` creates it from [.local.example/wezterm.lua](../.loc
 - A rule whose images are all missing is skipped without a message.
 - The first rule that matches wins: a pane title pattern (`title`), an ssh session (`ssh = true`) or a fragment of the current directory (`cwd`).
   Inside tmux the title is the session name: the tmux configuration turns `set-titles` on for every session.
+- A title that carries no session name is a fallback title, such as `wslhost.exe` after a nested tmux client exits, an executable name ending in `.exe`, `wezterm`, a shell name such as `bash` or an empty title.
+  A pane whose title falls back keeps the look its title rule gave it, so EDI's face stays, and a fallback title never starts a title rule.
+  A title that names a real session picks that session's look again, or the default when no rule matches.
+  A pane that never had a title rule, such as a fresh window, shows the default, or the look an `ssh` or `cwd` rule gives it.
 - A rule may also set a font and colours, so a pane can change its whole look, such as an agent's session recognised by its title.
 - EDI's face is such a rule: while a tmux session named `edi-<yymmdd>-<hhmm>` is attached, the pane shows Fira Code in dark cyan text, a bright cyan cursor and a deep teal selection, over a black underlay with the picture fitted whole on top.
   The picture is `~/.edi/state/wallpaper.png` when EDI has made one, otherwise `docs/images/EDI-darkness.jpg` in the EDI checkout.

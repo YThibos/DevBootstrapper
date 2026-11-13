@@ -91,4 +91,23 @@ sed -i "s|local edi = '~/EDI'|local edi = '~/checkouts/EDI'|" "$DEV/.local/wezte
 assert_eq "$(image)" "$HOME/checkouts/EDI/docs/images/EDI-darkness.jpg" "the EDI checkout path is configurable"
 assert_eq "$(harness face 'some-other-title')" "" "other panes keep their own look"
 
+# Fallback titles: a tmux client exiting resets the window title to a name such as wslhost.exe,
+# which carries no session name and so keeps the pane's look.
+sed -i "s|local edi = '~/checkouts/EDI'|local edi = '~/EDI'|" "$DEV/.local/wezterm.lua"
+mkdir -p "$HOME/EDI/docs/images" "$SANDBOX/pictures"
+touch "$HOME/EDI/docs/images/EDI-darkness.jpg" "$SANDBOX/pictures/andromeda-darker.jpg"
+printf "pictures = '%s',\n" "$SANDBOX/pictures" >"$SANDBOX/pictures-line" && sed -i "/^return {/r $SANDBOX/pictures-line" "$DEV/.local/wezterm.lua"
+edi_image=$HOME/EDI/docs/images/EDI-darkness.jpg
+default_image=$SANDBOX/pictures/andromeda-darker.jpg
+looks() { harness titles "$1" | paste -sd' '; }
+assert_eq "$(looks "$edi_title|wslhost.exe")" "$edi_image $edi_image" "a fallback title after EDI's keeps EDI's face"
+assert_eq "$(looks "$edi_title|wslhost.exe|wezterm|bash|C:\\Windows\\System32\\wslhost.exe|")" \
+  "$edi_image $edi_image $edi_image $edi_image $edi_image $edi_image" "as do wezterm, a shell name, an executable path and an empty title"
+assert_eq "$(looks "$edi_title|wslhost.exe|main")" "$edi_image $edi_image $default_image" "a real session name after a fallback title gets its own look"
+assert_eq "$(looks "$edi_title|wslhost.exe|edi-261113-0900")" "$edi_image $edi_image $edi_image" "and another EDI session keeps EDI's face"
+assert_eq "$(looks "wslhost.exe")" "$default_image" "a fresh window with only a fallback title shows the default"
+assert_eq "$(looks "main|wslhost.exe")" "$default_image $default_image" "a fallback title after the default keeps the default"
+assert_eq "$(harness tabs "1:$edi_title|2:wslhost.exe|1:wslhost.exe" | paste -sd' ')" "$edi_image $default_image $edi_image" \
+  "each pane keeps its own look across fallback titles while tabs switch"
+
 finish
