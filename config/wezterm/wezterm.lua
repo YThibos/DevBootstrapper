@@ -290,11 +290,11 @@ local function backgrounds(config, machine, settings)
 
   -- The first matching rule, else the default. A fallback title names no session, so a title rule
   -- only holds on such a pane when it was the pane's look already.
-  local function look_for(pane, previous_title)
+  local function look_for(pane, remembered_title_rule)
     local fallback = is_fallback_title(pane:get_title())
     for _, rule in ipairs(rules) do
       if rule.title and fallback then
-        if rule.title == previous_title then
+        if rule.title == remembered_title_rule then
           return rule
         end
       elseif matches(rule, pane) then
