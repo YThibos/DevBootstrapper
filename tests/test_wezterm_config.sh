@@ -109,5 +109,8 @@ assert_eq "$(looks "wslhost.exe")" "$default_image" "a fresh window with only a 
 assert_eq "$(looks "main|wslhost.exe")" "$default_image $default_image" "a fallback title after the default keeps the default"
 assert_eq "$(harness tabs "1:$edi_title|2:wslhost.exe|1:wslhost.exe" | paste -sd' ')" "$edi_image $default_image $edi_image" \
   "each pane keeps its own look across fallback titles while tabs switch"
+assert_eq "$(looks "$edi_title|wslhost.exe|<reload>|wslhost.exe")" "$edi_image $edi_image $edi_image" \
+  "a configuration reload during a fallback title keeps EDI's face"
+assert_eq "$(looks "main|<reload>|wslhost.exe")" "$default_image $default_image" "and the default stays the default"
 
 finish

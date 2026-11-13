@@ -200,6 +200,12 @@ local function is_fallback_title(title)
   return name == '' or name:find('%.exe$') ~= nil or FALLBACK_TITLES[name] == true
 end
 
+-- Where a pane's title rule is remembered, by its title pattern: in wezterm.GLOBAL, which outlives
+-- a configuration reload, while the rules themselves are rebuilt on every load.
+local function title_rule_memory(pane)
+  return 'title rule of pane ' .. pane:pane_id()
+end
+
 local function matches(rule, pane)
   if rule.title then
     return (pane:get_title() or ''):find(rule.title) ~= nil
@@ -284,11 +290,11 @@ local function backgrounds(config, machine, settings)
 
   -- The first matching rule, else the default. A fallback title names no session, so a title rule
   -- only holds on such a pane when it was the pane's look already.
-  local function look_for(pane, previous)
+  local function look_for(pane, previous_title)
     local fallback = is_fallback_title(pane:get_title())
     for _, rule in ipairs(rules) do
       if rule.title and fallback then
-        if rule == previous then
+        if rule.title == previous_title then
           return rule
         end
       elseif matches(rule, pane) then
@@ -298,12 +304,11 @@ local function backgrounds(config, machine, settings)
     return default
   end
 
-  local pane_looks = {}
   local shown = {}
   return function(window, pane)
-    local pane_id = pane:pane_id()
-    local chosen = look_for(pane, pane_looks[pane_id])
-    pane_looks[pane_id] = chosen
+    local memory = title_rule_memory(pane)
+    local chosen = look_for(pane, wezterm.GLOBAL[memory])
+    wezterm.GLOBAL[memory] = chosen.title
     local id = window:window_id()
     if shown[id] ~= chosen then
       shown[id] = chosen

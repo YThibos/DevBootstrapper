@@ -35,6 +35,7 @@ When it is missing, `devup` creates it from [.local.example/wezterm.lua](../.loc
   Inside tmux the title is the session name: the tmux configuration turns `set-titles` on for every session.
 - A title that carries no session name is a fallback title, such as `wslhost.exe` after a nested tmux client exits, an executable name ending in `.exe`, `wezterm`, a shell name such as `bash` or an empty title.
   A pane whose title falls back keeps the look its title rule gave it, so EDI's face stays, and a fallback title never starts a title rule.
+  WezTerm remembers that look across a configuration reload.
   A title that names a real session picks that session's look again, or the default when no rule matches.
   A pane that never had a title rule, such as a fresh window, shows the default, or the look an `ssh` or `cwd` rule gives it.
 - A rule may also set a font and colours, so a pane can change its whole look, such as an agent's session recognised by its title.

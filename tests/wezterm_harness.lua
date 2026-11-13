@@ -3,7 +3,8 @@
 -- Usage: lua5.4 wezterm_harness.lua REPO HOME MODE [ARGUMENT]
 --   keys            one line per key: MODS+KEY ACTION ARGUMENT, or for a callback key what it does in order
 --   face TITLE      the image, font and text colour WezTerm switches to for a pane with that title
---   titles T1|T2..  one line per title the pane takes in turn: the image its window shows after it
+--   titles T1|T2..  one line per title the pane takes in turn: the image its window shows after it;
+--                   the step <reload> loads the configuration again, as WezTerm does on a reload
 --   tabs ID:T1|ID:T2  one line per pane brought to the front in turn, ID naming the pane and T its title
 --   prompt NAME     the tab that answering the Ctrl+t prompt with NAME opens, or "ignored"
 --   prompt-text     the Ctrl+t prompt's text; HARNESS_TMUX_SESSIONS holds what tmux lists, unset
@@ -26,6 +27,7 @@ os.time = function() return clock end
 local steps = {}
 local fake = {
   home_dir = '/no/windows/home',
+  GLOBAL = {},
   config_builder = function() return {} end,
   default_wsl_domains = function() return { { name = 'WSL:Ubuntu' } } end,
   font_with_fallback = function(families) return { families = families } end,
@@ -62,7 +64,10 @@ local function show(value)
 end
 
 local machine = { distro = 'Ubuntu', dev_home = home .. '/development', dev_home_unc = home .. '/development' }
-local config = real_dofile(repo .. '/config/wezterm/wezterm.lua').build(machine)
+local function load_config()
+  return real_dofile(repo .. '/config/wezterm/wezterm.lua').build(machine)
+end
+local config = load_config()
 
 -- What a callback key does, in order: the actions it performs and the pauses between them.
 local function performed(callback)
@@ -81,7 +86,6 @@ if mode == 'keys' then
     print(string.format('%s+%s %s', key.mods, key.key, shown))
   end
 elseif mode == 'face' or mode == 'titles' or mode == 'tabs' then
-  local handler = handlers['update-status']
   local title, pane_id = '', 1
   local pane = {
     pane_id = function() return pane_id end,
@@ -110,16 +114,20 @@ elseif mode == 'face' or mode == 'titles' or mode == 'tabs' then
   }
   if mode == 'face' then
     title = argument
-    handler(window, pane)
+    handlers['update-status'](window, pane)
   else
     for step in (argument .. '|'):gmatch('([^|]*)|') do
-      if mode == 'tabs' then
-        pane_id, title = step:match('^(%d+):(.*)$')
+      if step == '<reload>' then
+        load_config()
       else
-        title = step
+        if mode == 'tabs' then
+          pane_id, title = step:match('^(%d+):(.*)$')
+        else
+          title = step
+        end
+        handlers['update-status'](window, pane)
+        print(shown)
       end
-      handler(window, pane)
-      print(shown)
     end
   end
 elseif mode == 'prompt' or mode == 'prompt-text' then
