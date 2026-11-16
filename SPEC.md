@@ -342,6 +342,7 @@ The launcher moved to `Alt+Shift+l`, as `Alt+l` moves between panes.
 Keys live in `config/wezterm/wezterm.lua` with `--:` cheat lines.
 
 EDI's face is a rule in `.local.example/wezterm.lua`, seeded into `.local/wezterm.lua` by the `links` step: while a pane's title is `edi-<yymmdd>-<hhmm>` it shows Fira Code, `#35aab6` text, a bright cyan cursor and a deep teal selection over a black underlay with the picture fitted whole.
+A fallback title without a session name, such as `wslhost.exe`, keeps the pane's look (`docs/wezterm.md`).
 The picture is the first existing of `~/.edi/state/wallpaper.png` (EDI's wallpaper) and `docs/images/EDI-darkness.jpg` in the EDI checkout (`~/EDI`, configurable); with neither, the rule is skipped silently.
 The picture is chosen when WezTerm loads its configuration, so a file that appears later shows after a reload (`Ctrl+Shift+r`).
 The `links` step never edits an existing `.local/wezterm.lua`; it warns while that file still holds the earlier EDI rule, which looked for the picture in the Pictures folder.

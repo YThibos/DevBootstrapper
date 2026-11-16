@@ -187,6 +187,25 @@ local function is_ssh(pane)
   return proc:find('[/\\]ssh%.?e?x?e?$') ~= nil
 end
 
+-- What a window title falls back to when no tmux client names the session any more, such as
+-- "wslhost.exe" after a nested tmux client exits. Executable names, the shells and WezTerm itself.
+local FALLBACK_TITLES = {
+  wezterm = true, ['wezterm-gui'] = true, wsl = true, login = true,
+  bash = true, zsh = true, sh = true, dash = true, fish = true,
+}
+
+-- True for a title that carries no session name.
+local function is_fallback_title(title)
+  local name = (title or ''):lower():gsub('^.*[/\\]', ''):gsub('^%-', '')
+  return name == '' or name:find('%.exe$') ~= nil or FALLBACK_TITLES[name] == true
+end
+
+-- Where a pane's title rule is remembered, by its title pattern: in wezterm.GLOBAL, which outlives
+-- a configuration reload, while the rules themselves are rebuilt on every load.
+local function title_rule_memory(pane)
+  return 'title rule of pane ' .. pane:pane_id()
+end
+
 local function matches(rule, pane)
   if rule.title then
     return (pane:get_title() or ''):find(rule.title) ~= nil
@@ -269,15 +288,27 @@ local function backgrounds(config, machine, settings)
     return result
   end
 
-  local shown = {}
-  return function(window, pane)
-    local chosen = default
+  -- The first matching rule, else the default. A fallback title names no session, so a title rule
+  -- only holds on such a pane when it was the pane's look already.
+  local function look_for(pane, remembered_title_rule)
+    local fallback = is_fallback_title(pane:get_title())
     for _, rule in ipairs(rules) do
-      if matches(rule, pane) then
-        chosen = rule
-        break
+      if rule.title and fallback then
+        if rule.title == remembered_title_rule then
+          return rule
+        end
+      elseif matches(rule, pane) then
+        return rule
       end
     end
+    return default
+  end
+
+  local shown = {}
+  return function(window, pane)
+    local memory = title_rule_memory(pane)
+    local chosen = look_for(pane, wezterm.GLOBAL[memory])
+    wezterm.GLOBAL[memory] = chosen.title
     local id = window:window_id()
     if shown[id] ~= chosen then
       shown[id] = chosen
