@@ -103,10 +103,12 @@ elseif mode == 'face' or mode == 'titles' or mode == 'tabs' then
     set_config_overrides = function(_, overrides)
       shown = 'none'
       for _, layer in ipairs(overrides.background or {}) do
-        if layer.source.File then shown = layer.source.File:gsub('\\', '/') end
+        if layer.source.File then
+          shown = layer.source.File:gsub('\\', '/')
+          if verbose then print('image=' .. shown) end
+        end
       end
       if verbose then
-        if shown ~= 'none' then print('image=' .. shown) end
         if overrides.font then print('font=' .. show(overrides.font.families)) end
         if overrides.colors then print('foreground=' .. overrides.colors.foreground) end
       end
